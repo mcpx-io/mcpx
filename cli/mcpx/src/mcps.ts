@@ -5,18 +5,18 @@ export interface McpDefinition {
   name: string;
   description: string;
   type: McpType;
-  package?: string;           // npm package (local CLIs)
-  url?: string;               // URL base (remote MCPs)
+  package?: string;
+  packageArgs?: string[];     // args extras além do pacote
+  url?: string;
   headers?: Record<string, string>;
-  inputs?: McpInput[];        // campos que o usuário precisa preencher
+  inputs?: McpInput[];
 }
 
 export interface McpInput {
   key: string;
   label: string;
   placeholder: string;
-  header?: string;            // se for virar header no .mcp.json
-  env?: string;               // se for virar env var
+  header?: string;
 }
 
 export const MCPS: McpDefinition[] = [
@@ -42,5 +42,13 @@ export const MCPS: McpDefinition[] = [
     description: "Debug local — browser automation, HTTP requests, parse de rotas",
     type: "local",
     package: "@mcpx-io/debug@latest",
+  },
+  {
+    key: "chrome-devtools",
+    name: "chrome-devtools",
+    description: "Chrome DevTools — console, network, screenshots via Chrome",
+    type: "local",
+    package: "chrome-devtools-mcp@latest",
+    packageArgs: ["--port=9222"],
   },
 ];

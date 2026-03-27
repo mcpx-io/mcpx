@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.0");
+  .version("1.0.1");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -168,7 +168,7 @@ async function installMcp(key: string): Promise<void> {
     } catch {
       console.warn(`Aviso: falha ao instalar globalmente. Será usado via npx.`);
     }
-    addLocalMcp(mcp.name, mcp.package!);
+    addLocalMcp(mcp.name, mcp.package!, mcp.packageArgs ?? []);
     console.log(`✓ "${mcp.name}" adicionado ao .mcp.json`);
   }
 }
