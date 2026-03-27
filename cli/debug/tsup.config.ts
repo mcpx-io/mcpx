@@ -1,0 +1,12 @@
+import { defineConfig } from "tsup";
+
+export default defineConfig({
+  entry: ["server.ts"],
+  format: ["esm"],
+  outDir: "dist",
+  splitting: false,
+  external: ["playwright"],
+  banner: {
+    js: "#!/usr/bin/env node",
+  },
+});

@@ -1,0 +1,14 @@
+{
+  "name": "mcpx",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "mcp/*",
+    "cli/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:postgres": "npm run build --workspace=mcp/postgres",
+    "build:debug": "npm run build --workspace=cli/debug"
+  }
+}
