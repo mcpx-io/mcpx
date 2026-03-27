@@ -1,7 +1,7 @@
 import { Command } from "commander";
+import checkbox from "@inquirer/checkbox";
 import select from "@inquirer/select";
 import input from "@inquirer/input";
-import confirm from "@inquirer/confirm";
 import { execSync } from "child_process";
 import { MCPS } from "./mcps.js";
 import {
@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.1");
+  .version("1.0.2");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -25,30 +25,32 @@ program.command("init")
     console.log(`Projeto: ${process.cwd()}`);
     console.log(`Arquivo: ${mcpJsonPath()}\n`);
 
-    const configured = listConfigured();
+    const configured = new Set(listConfigured());
+
+    const selected = await checkbox({
+      message: "Selecione os MCPs para adicionar (espaço para marcar, enter para confirmar):",
+      choices: MCPS.map(m => ({
+        name: `${m.key.padEnd(16)} ${m.type === "remote" ? "[remoto]" : "[local] "} — ${m.description}${configured.has(m.name) ? "  (já configurado)" : ""}`,
+        value: m.key,
+        checked: !configured.has(m.name),
+      })),
+    });
+
+    if (selected.length === 0) {
+      console.log("\nNenhum MCP selecionado.");
+      return;
+    }
+
+    console.log("");
+
     let added = 0;
-
-    for (const mcp of MCPS) {
-      const alreadyConfigured = configured.includes(mcp.name);
-      const label = alreadyConfigured ? `${mcp.key} (já configurado)` : mcp.key;
-
-      const use = await confirm({
-        message: `Adicionar ${label}? — ${mcp.description}`,
-        default: !alreadyConfigured,
-      });
-
-      if (!use) continue;
-
-      await installMcp(mcp.key);
+    for (const key of selected) {
+      await installMcp(key);
       added++;
     }
 
-    if (added === 0) {
-      console.log("\nNenhum MCP adicionado.");
-    } else {
-      console.log(`\n✓ ${added} MCP(s) configurado(s) em .mcp.json`);
-      console.log("Recarregue o Claude Code para aplicar.");
-    }
+    console.log(`\n✓ ${added} MCP(s) configurado(s) em .mcp.json`);
+    console.log("Recarregue o Claude Code para aplicar.");
   });
 
 // ── add ──────────────────────────────────────────────────────────────────────
