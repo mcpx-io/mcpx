@@ -1,5 +1,5 @@
 {
-  "name": "mcpx",
+  "name": "@mcpx-io/mcpx",
   "version": "1.0.0",
   "type": "module",
   "description": "CLI para instalar e configurar MCPs do ecossistema mcpx",
@@ -9,6 +9,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/index.ts",
