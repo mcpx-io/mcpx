@@ -1,5 +1,5 @@
 {
-  "name": "@mcpx/debug",
+  "name": "@mcpx-io/debug",
   "version": "1.0.0",
   "type": "module",
   "description": "MCP local de debug — browser automation, HTTP requests, análise de projeto",
