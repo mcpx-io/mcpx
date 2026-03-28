@@ -25,7 +25,7 @@ export const MCPS: McpDefinition[] = [
     name: "mcpx-postgres",
     description: "Banco de dados PostgreSQL — query, DDL, DML, vacuum e mais",
     type: "remote",
-    url: "https://mcpx.online/mcp",
+    url: "https://mcpx.online/postgres/mcp",
     headers: { Accept: "application/json, text/event-stream" },
     inputs: [
       {

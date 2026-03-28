@@ -1,6 +1,6 @@
 {
   "name": "@mcpx-io/mcpx",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "description": "CLI para instalar e configurar MCPs do ecossistema mcpx",
   "bin": {
