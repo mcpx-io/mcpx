@@ -40,13 +40,6 @@ export interface McpEnvInput {
 
 export const MCPS: McpDefinition[] = [
   {
-    key: "proxy",
-    name: "mcpx-proxy",
-    description: "Proxy local — resolve secrets mcpx:enc:* antes de enviar para mcpx.online",
-    type: "local",
-    package: "@mcpx-io/proxy@latest",
-  },
-  {
     key: "postgres",
     name: "mcpx-postgres",
     description: "Banco de dados PostgreSQL — query, DDL, DML, vacuum e mais",

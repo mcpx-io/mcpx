@@ -16,7 +16,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.8");
+  .version("1.0.9");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,9 @@ program.command("init")
     console.log("\n🚀 mcpx init — configuração do .mcp.json\n");
     console.log(`Projeto: ${process.cwd()}`);
     console.log(`Arquivo: ${mcpJsonPath()}\n`);
+
+    // Proxy sempre presente — adicionado automaticamente
+    ensureProxy();
 
     const configured = new Set(listConfigured());
 
@@ -208,9 +211,12 @@ async function installMcp(key: string): Promise<void> {
     // Campos com secret — salva criptografado, coloca referência no header
     for (const field of mcp.secretInputs ?? []) {
       const value = await input({
-        message: `${field.label}:`,
-        validate: (v) => v.trim().length > 0 || "Campo obrigatório",
+        message: `${field.label} (Enter para pular):`,
       });
+      if (!value.trim()) {
+        console.log(`  Pulado — use "mcpx add ${key}" para configurar depois`);
+        return;
+      }
       saveSecret(field.ref, value.trim());
       headers[field.header] = makeRef(field.ref);
     }

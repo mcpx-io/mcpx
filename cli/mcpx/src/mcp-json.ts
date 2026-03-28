@@ -67,6 +67,5 @@ export function ensureProxy(): void {
       args: ["-y", "@mcpx-io/proxy@latest"],
     };
     writeMcpJson(data);
-    console.log(`✓ "mcpx-proxy" adicionado ao .mcp.json (necessário para secrets)`);
   }
 }
