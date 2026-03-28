@@ -58,3 +58,15 @@ export function listConfigured(): string[] {
 export function mcpJsonPath(): string {
   return MCP_PATH;
 }
+
+export function ensureProxy(): void {
+  const data = readMcpJson();
+  if (!data.mcpServers["mcpx-proxy"]) {
+    data.mcpServers["mcpx-proxy"] = {
+      command: "npx",
+      args: ["-y", "@mcpx-io/proxy@latest"],
+    };
+    writeMcpJson(data);
+    console.log(`✓ "mcpx-proxy" adicionado ao .mcp.json (necessário para secrets)`);
+  }
+}

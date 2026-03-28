@@ -12,6 +12,7 @@ export interface McpDefinition {
   url?: string;
   headers?: Record<string, string>;
   inputs?: McpInput[];
+  secretInputs?: McpSecretInput[];
 }
 
 export interface McpInput {
@@ -21,27 +22,42 @@ export interface McpInput {
   header?: string;
 }
 
+export interface McpSecretInput {
+  key: string;
+  label: string;
+  ref: string;           // nome do secret em ~/.mcpx/secrets.json
+  header: string;        // header que vai no .mcp.json como mcpx:enc:<ref>
+}
+
 export interface McpEnvInput {
   key: string;
   label: string;
   placeholder: string;
   optional?: boolean;
   env: string;
+  secret?: boolean;      // se true, criptografa em ~/.mcpx/secrets.json
 }
 
 export const MCPS: McpDefinition[] = [
+  {
+    key: "proxy",
+    name: "mcpx-proxy",
+    description: "Proxy local — resolve secrets mcpx:enc:* antes de enviar para mcpx.online",
+    type: "local",
+    package: "@mcpx-io/proxy@latest",
+  },
   {
     key: "postgres",
     name: "mcpx-postgres",
     description: "Banco de dados PostgreSQL — query, DDL, DML, vacuum e mais",
     type: "remote",
-    url: "https://mcpx.online/postgres/mcp",
+    url: "http://localhost:4099/postgres/mcp",
     headers: { Accept: "application/json, text/event-stream" },
-    inputs: [
+    secretInputs: [
       {
         key: "database_url",
         label: "Connection string do banco PostgreSQL",
-        placeholder: "postgresql://user:pass@host:5432/dbname",
+        ref: "postgres",
         header: "X-Database-URL",
       },
     ],
@@ -51,13 +67,13 @@ export const MCPS: McpDefinition[] = [
     name: "mcpx-redis",
     description: "Redis — get, set, hash, list, set, scan, TTL e mais",
     type: "remote",
-    url: "https://mcpx.online/redis/mcp",
+    url: "http://localhost:4099/redis/mcp",
     headers: { Accept: "application/json, text/event-stream" },
-    inputs: [
+    secretInputs: [
       {
         key: "redis_url",
         label: "Connection string do Redis",
-        placeholder: "redis://user:pass@host:6379",
+        ref: "redis",
         header: "X-Redis-URL",
       },
     ],
@@ -80,6 +96,7 @@ export const MCPS: McpDefinition[] = [
         label: "Senha SSH (Enter para pular — usa chave ~/.ssh)",
         placeholder: "",
         optional: true,
+        secret: true,
         env: "VPS_PASSWORD",
       },
     ],

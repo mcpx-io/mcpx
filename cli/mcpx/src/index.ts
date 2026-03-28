@@ -5,15 +5,18 @@ import input from "@inquirer/input";
 import { MCPS } from "./mcps.js";
 import {
   addLocalMcp, addRemoteMcp, removeMcp,
-  listConfigured, mcpJsonPath, readMcpJson,
+  listConfigured, mcpJsonPath, readMcpJson, ensureProxy,
 } from "./mcp-json.js";
+import {
+  saveSecret, loadSecret, deleteSecret, listSecrets, makeRef,
+} from "./secrets.js";
 
 const program = new Command();
 
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.7");
+  .version("1.0.8");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -132,6 +135,54 @@ program.command("update")
     console.log("Nenhuma ação necessária.");
   });
 
+// ── secrets ──────────────────────────────────────────────────────────────────
+
+const secrets = program.command("secrets")
+  .description("Gerencia secrets criptografados (~/.mcpx/secrets.json)");
+
+secrets.command("set <ref>")
+  .description("Salva ou atualiza um secret criptografado")
+  .action(async (ref: string) => {
+    const value = await input({
+      message: `Valor para "${ref}":`,
+      validate: (v) => v.trim().length > 0 || "Campo obrigatório",
+    });
+    saveSecret(ref, value.trim());
+    console.log(`✓ Secret "${ref}" salvo em ~/.mcpx/secrets.json`);
+  });
+
+secrets.command("get <ref>")
+  .description("Mostra o valor decriptado de um secret")
+  .action((ref: string) => {
+    try {
+      const value = loadSecret(ref);
+      console.log(value);
+    } catch (e) {
+      console.error((e as Error).message);
+    }
+  });
+
+secrets.command("list")
+  .description("Lista todos os secrets salvos (sem valores)")
+  .action(() => {
+    const refs = listSecrets();
+    if (refs.length === 0) {
+      console.log("Nenhum secret salvo.");
+      return;
+    }
+    console.log("\nSecrets em ~/.mcpx/secrets.json:\n");
+    refs.forEach(r => console.log(`  mcpx:enc:${r}`));
+    console.log("");
+  });
+
+secrets.command("delete <ref>")
+  .description("Remove um secret")
+  .action((ref: string) => {
+    const ok = deleteSecret(ref);
+    if (ok) console.log(`✓ Secret "${ref}" removido`);
+    else console.log(`Secret "${ref}" não encontrado`);
+  });
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function installMcp(key: string): Promise<void> {
@@ -144,6 +195,7 @@ async function installMcp(key: string): Promise<void> {
   if (mcp.type === "remote") {
     const headers: Record<string, string> = { ...mcp.headers };
 
+    // Campos normais (sem criptografia)
     for (const field of mcp.inputs ?? []) {
       const value = await input({
         message: field.label,
@@ -152,6 +204,19 @@ async function installMcp(key: string): Promise<void> {
       });
       if (field.header) headers[field.header] = value.trim();
     }
+
+    // Campos com secret — salva criptografado, coloca referência no header
+    for (const field of mcp.secretInputs ?? []) {
+      const value = await input({
+        message: `${field.label}:`,
+        validate: (v) => v.trim().length > 0 || "Campo obrigatório",
+      });
+      saveSecret(field.ref, value.trim());
+      headers[field.header] = makeRef(field.ref);
+    }
+
+    // Se tem secretInputs, garante que o proxy está no .mcp.json
+    if ((mcp.secretInputs ?? []).length > 0) ensureProxy();
 
     addRemoteMcp(mcp.name, mcp.url!, headers);
     console.log(`✓ "${mcp.name}" adicionado ao .mcp.json`);
@@ -166,12 +231,23 @@ async function installMcp(key: string): Promise<void> {
         default: field.placeholder || undefined,
         validate: (v) => field.optional || v.trim().length > 0 || "Campo obrigatório",
       });
-      if (value.trim()) env[field.env] = value.trim();
+
+      if (!value.trim()) continue;
+
+      if (field.secret) {
+        // Salva criptografado e coloca referência na env
+        const ref = `${key}-${field.key}`;
+        saveSecret(ref, value.trim());
+        env[field.env] = makeRef(ref);
+      } else {
+        env[field.env] = value.trim();
+      }
     }
 
     // VPS: permite múltiplas instâncias com nome customizado
     if (mcp.key === "vps" && env["VPS_SSH"]) {
-      const host = env["VPS_SSH"].split("@")[1] ?? env["VPS_SSH"];
+      const sshVal = env["VPS_SSH"];
+      const host = sshVal.split("@")[1] ?? sshVal;
       mcpName = `mcpx-vps-${host}`;
     }
 

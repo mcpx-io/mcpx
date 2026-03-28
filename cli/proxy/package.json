@@ -1,10 +1,10 @@
 {
-  "name": "@mcpx-io/vps",
-  "version": "1.0.1",
+  "name": "@mcpx-io/proxy",
+  "version": "1.0.0",
   "type": "module",
-  "description": "MCP local — SSH para VPS com PM2, nginx, docker e monitor",
+  "description": "Proxy local HTTP que resolve secrets mcpx:enc:* antes de encaminhar para mcpx.online",
   "bin": {
-    "mcpx-vps": "dist/server.js"
+    "mcpx-proxy": "dist/server.js"
   },
   "files": ["dist"],
   "publishConfig": {
@@ -17,12 +17,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "ssh2": "^1.16.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/ssh2": "^1.15.0",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0"

@@ -5,11 +5,12 @@ import { Client } from "ssh2";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { homedir } from "os";
+import { resolveValue } from "./secrets.js";
 
 // ─── SSH Config ───────────────────────────────────────────────────────────────
 
-const VPS_SSH = (process.env.VPS_SSH ?? "").replace(/^ssh\s+/, "").trim();
-const VPS_PASSWORD = process.env.VPS_PASSWORD ?? "";
+const VPS_SSH = resolveValue((process.env.VPS_SSH ?? "").replace(/^ssh\s+/, "").trim());
+const VPS_PASSWORD = resolveValue(process.env.VPS_PASSWORD ?? "");
 
 if (!VPS_SSH) {
   console.error("Erro: VPS_SSH é obrigatório. Ex: root@85.209.92.10");
