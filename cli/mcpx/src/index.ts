@@ -13,7 +13,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.4");
+  .version("1.0.5");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -27,12 +27,19 @@ program.command("init")
     const configured = new Set(listConfigured());
 
     const selected = await checkbox({
-      message: "Selecione os MCPs para adicionar (espaço para marcar, enter para confirmar):",
+      message: "Selecione os MCPs (espaço para marcar, enter para confirmar):",
       choices: MCPS.map(m => ({
         name: `${m.key.padEnd(16)} ${m.type === "remote" ? "[remoto]" : "[local] "} — ${m.description}${configured.has(m.name) ? "  (já configurado)" : ""}`,
         value: m.key,
-        checked: !configured.has(m.name),
+        checked: false,
       })),
+      theme: {
+        icon: {
+          checked:   " ✓",
+          unchecked: " ○",
+          cursor:    "→",
+        },
+      },
     });
 
     if (selected.length === 0) {
