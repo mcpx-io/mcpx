@@ -3,7 +3,7 @@ name: Deploy @mcpx/postgres
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - "mcp/postgres/**"
 
