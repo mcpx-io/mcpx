@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * @mcpx-io/proxy — proxy local HTTP que resolve secrets mcpx:enc:* nos headers
  * antes de encaminhar para mcpx.online
@@ -86,7 +85,7 @@ httpServer.on("error", (e: NodeJS.ErrnoException) => {
 
 // ─── MCP Server (stdio) — mantém o processo vivo e expõe status ──────────────
 
-const mcp = new McpServer({ name: "@mcpx-io/proxy", version: "1.0.0" });
+const mcp = new McpServer({ name: "@mcpx-io/proxy", version: "1.0.1" });
 
 mcp.registerTool("proxy_status", {
   description: "Retorna o status do proxy local mcpx",
