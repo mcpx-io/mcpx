@@ -2,7 +2,6 @@ import { Command } from "commander";
 import checkbox from "@inquirer/checkbox";
 import select from "@inquirer/select";
 import input from "@inquirer/input";
-import { execSync } from "child_process";
 import { MCPS } from "./mcps.js";
 import {
   addLocalMcp, addRemoteMcp, removeMcp,
@@ -14,7 +13,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.2");
+  .version("1.0.3");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -120,23 +119,10 @@ program.command("list")
 // ── update ───────────────────────────────────────────────────────────────────
 
 program.command("update")
-  .description("Atualiza todos os CLIs locais para a última versão")
+  .description("MCPs locais são sempre atualizados automaticamente via npx")
   .action(() => {
-    const localMcps = MCPS.filter(m => m.type === "local" && m.package);
-    if (localMcps.length === 0) {
-      console.log("Nenhum CLI local para atualizar.");
-      return;
-    }
-
-    for (const mcp of localMcps) {
-      console.log(`Atualizando ${mcp.package}...`);
-      try {
-        execSync(`npm install -g ${mcp.package}`, { stdio: "inherit" });
-        console.log(`✓ ${mcp.key} atualizado`);
-      } catch {
-        console.error(`✗ Falha ao atualizar ${mcp.key}`);
-      }
-    }
+    console.log("MCPs locais usam npx -y @latest — sempre baixam a versão mais recente ao iniciar.");
+    console.log("Nenhuma ação necessária.");
   });
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -164,14 +150,8 @@ async function installMcp(key: string): Promise<void> {
     console.log(`✓ "${mcp.name}" adicionado ao .mcp.json`);
 
   } else {
-    console.log(`Instalando ${mcp.package}...`);
-    try {
-      execSync(`npm install -g ${mcp.package}`, { stdio: "inherit" });
-    } catch {
-      console.warn(`Aviso: falha ao instalar globalmente. Será usado via npx.`);
-    }
     addLocalMcp(mcp.name, mcp.package!, mcp.packageArgs ?? []);
-    console.log(`✓ "${mcp.name}" adicionado ao .mcp.json`);
+    console.log(`✓ "${mcp.name}" adicionado ao .mcp.json (via npx —sempre @latest)`);
   }
 }
 
