@@ -22,7 +22,7 @@ fi
 
 echo "Registry configurado."
 
-npm install -g @mcpx-io/mcpx 2>/dev/null
+npm install -g @mcpx-io/mcpx@latest 2>/dev/null
 
 echo ""
 echo "Pronto! Use: mcpx init"

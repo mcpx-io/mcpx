@@ -24,7 +24,7 @@ if (-not ($lines -match "npm.pkg.github.com/:_authToken")) {
 
 Write-Host "Registry configurado."
 
-npm install -g @mcpx-io/mcpx
+npm install -g @mcpx-io/mcpx@latest
 
 Write-Host ""
 Write-Host "Pronto! Use: mcpx init"
