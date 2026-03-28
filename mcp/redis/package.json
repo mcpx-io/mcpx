@@ -2,7 +2,7 @@
   "name": "@mcpx/redis",
   "version": "1.0.0",
   "type": "module",
-  "description": "MCP server for Redis — session-based, connection pooling, 20 tools",
+  "description": "MCP server for Redis — session-based, connection pooling, 20 tools — https://mcpx.online/redis/mcp",
   "scripts": {
     "build": "tsup server.ts --format esm --outDir dist --no-splitting --external ioredis",
     "start": "node dist/server.js",
