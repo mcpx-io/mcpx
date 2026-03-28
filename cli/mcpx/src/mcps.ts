@@ -37,6 +37,22 @@ export const MCPS: McpDefinition[] = [
     ],
   },
   {
+    key: "redis",
+    name: "mcpx-redis",
+    description: "Redis — get, set, hash, list, set, scan, TTL e mais",
+    type: "remote",
+    url: "https://mcpx.online/redis/mcp",
+    headers: { Accept: "application/json, text/event-stream" },
+    inputs: [
+      {
+        key: "redis_url",
+        label: "Connection string do Redis",
+        placeholder: "redis://user:pass@host:6379",
+        header: "X-Redis-URL",
+      },
+    ],
+  },
+  {
     key: "debug",
     name: "mcpx-debug",
     description: "Debug local — browser automation, HTTP requests, parse de rotas",

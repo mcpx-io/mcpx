@@ -13,7 +13,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.3");
+  .version("1.0.4");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
