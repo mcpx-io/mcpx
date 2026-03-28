@@ -35,9 +35,11 @@ export function addRemoteMcp(key: string, url: string, headers: Record<string, s
   writeMcpJson(data);
 }
 
-export function addLocalMcp(key: string, pkg: string, extraArgs: string[] = []): void {
+export function addLocalMcp(key: string, pkg: string, extraArgs: string[] = [], env?: Record<string, string>): void {
   const data = readMcpJson();
-  data.mcpServers[key] = { command: "npx", args: ["-y", pkg, ...extraArgs] };
+  const entry: McpServer = { command: "npx", args: ["-y", pkg, ...extraArgs] };
+  if (env && Object.keys(env).length > 0) entry.env = env;
+  data.mcpServers[key] = entry;
   writeMcpJson(data);
 }
 

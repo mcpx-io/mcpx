@@ -6,7 +6,9 @@ export interface McpDefinition {
   description: string;
   type: McpType;
   package?: string;
-  packageArgs?: string[];     // args extras além do pacote
+  packageArgs?: string[];
+  env?: Record<string, string>;
+  envInputs?: McpEnvInput[];
   url?: string;
   headers?: Record<string, string>;
   inputs?: McpInput[];
@@ -17,6 +19,14 @@ export interface McpInput {
   label: string;
   placeholder: string;
   header?: string;
+}
+
+export interface McpEnvInput {
+  key: string;
+  label: string;
+  placeholder: string;
+  optional?: boolean;
+  env: string;
 }
 
 export const MCPS: McpDefinition[] = [
@@ -49,6 +59,28 @@ export const MCPS: McpDefinition[] = [
         label: "Connection string do Redis",
         placeholder: "redis://user:pass@host:6379",
         header: "X-Redis-URL",
+      },
+    ],
+  },
+  {
+    key: "vps",
+    name: "mcpx-vps",
+    description: "VPS — SSH, PM2, nginx, docker e monitor",
+    type: "local",
+    package: "@mcpx-io/vps@latest",
+    envInputs: [
+      {
+        key: "vps_ssh",
+        label: "SSH da VPS",
+        placeholder: "root@85.209.92.10",
+        env: "VPS_SSH",
+      },
+      {
+        key: "vps_password",
+        label: "Senha SSH (Enter para pular — usa chave ~/.ssh)",
+        placeholder: "",
+        optional: true,
+        env: "VPS_PASSWORD",
       },
     ],
   },

@@ -13,7 +13,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.6");
+  .version("1.0.7");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -157,8 +157,26 @@ async function installMcp(key: string): Promise<void> {
     console.log(`✓ "${mcp.name}" adicionado ao .mcp.json`);
 
   } else {
-    addLocalMcp(mcp.name, mcp.package!, mcp.packageArgs ?? []);
-    console.log(`✓ "${mcp.name}" adicionado ao .mcp.json (via npx —sempre @latest)`);
+    const env: Record<string, string> = {};
+    let mcpName = mcp.name;
+
+    for (const field of mcp.envInputs ?? []) {
+      const value = await input({
+        message: field.label,
+        default: field.placeholder || undefined,
+        validate: (v) => field.optional || v.trim().length > 0 || "Campo obrigatório",
+      });
+      if (value.trim()) env[field.env] = value.trim();
+    }
+
+    // VPS: permite múltiplas instâncias com nome customizado
+    if (mcp.key === "vps" && env["VPS_SSH"]) {
+      const host = env["VPS_SSH"].split("@")[1] ?? env["VPS_SSH"];
+      mcpName = `mcpx-vps-${host}`;
+    }
+
+    addLocalMcp(mcpName, mcp.package!, mcp.packageArgs ?? [], env);
+    console.log(`✓ "${mcpName}" adicionado ao .mcp.json (via npx — sempre @latest)`);
   }
 }
 
