@@ -3,12 +3,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
+import { resolveValue } from "./secrets.js";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 function getAuth() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT;
-  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT não definido. Use: mcpx secrets set google-sa");
+  const raw = resolveValue(process.env.GOOGLE_SERVICE_ACCOUNT ?? "");
+  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT não definido. Use: mcpx secrets set google_sa");
   const key = JSON.parse(raw);
   return new JWT({
     email: key.client_email,
