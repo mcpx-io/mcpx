@@ -76,16 +76,17 @@ httpServer.listen(PORT, "127.0.0.1", () => {
 
 httpServer.on("error", (e: NodeJS.ErrnoException) => {
   if (e.code === "EADDRINUSE") {
-    process.stderr.write(`Porta ${PORT} em uso. Use MCPX_PROXY_PORT para mudar.\n`);
+    // Outra instância já está rodando — não precisa crashar, MCP stdio continua ativo
+    process.stderr.write(`mcpx-proxy: porta ${PORT} já em uso (outra instância ativa).\n`);
   } else {
     process.stderr.write(`Erro no proxy: ${e.message}\n`);
+    process.exit(1);
   }
-  process.exit(1);
 });
 
 // ─── MCP Server (stdio) — mantém o processo vivo e expõe status ──────────────
 
-const mcp = new McpServer({ name: "@mcpx-io/proxy", version: "1.0.1" });
+const mcp = new McpServer({ name: "@mcpx-io/proxy", version: "1.0.2" });
 
 mcp.registerTool("proxy_status", {
   description: "Retorna o status do proxy local mcpx",

@@ -5,6 +5,6 @@ export default defineConfig({
   format: ["esm"],
   outDir: "dist",
   splitting: false,
-  external: ["googleapis"],
+  external: ["googleapis", "google-auth-library"],
   banner: { js: "#!/usr/bin/env node" },
 });
