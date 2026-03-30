@@ -76,7 +76,14 @@ mcp.registerTool("list_spreadsheets", {
 }, async ({ page_size = 20, query }) => {
   let q = "mimeType='application/vnd.google-apps.spreadsheet'";
   if (query) q += ` and name contains '${query}'`;
-  const res = await drive().files.list({ q, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" });
+  const res = await drive().files.list({
+    q,
+    pageSize: page_size,
+    fields: "files(id,name,modifiedTime,webViewLink)",
+    includeItemsFromAllDrives: true,
+    supportsAllDrives: true,
+    corpora: "allDrives",
+  });
   return { content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }] };
 });
 

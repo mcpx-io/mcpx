@@ -1,6 +1,6 @@
 {
   "name": "@mcpx-io/google-sheets",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "MCP local para Google Sheets — criar, ler, escrever, formatar planilhas via service account",
   "bin": {
