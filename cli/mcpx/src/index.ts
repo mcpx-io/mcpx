@@ -16,7 +16,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.0.11");
+  .version("1.0.12");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -233,6 +233,16 @@ async function installMcp(key: string): Promise<void> {
     let mcpName = mcp.name;
 
     for (const field of mcp.envInputs ?? []) {
+      if (field.secret) {
+        const ref = field.key;
+        // Reutiliza secret já salvo (ex: google_sa compartilhado entre google-sheets e apps-script)
+        try {
+          loadSecret(ref);
+          env[field.env] = makeRef(ref);
+          continue; // já existe, pula a pergunta
+        } catch { /* não existe ainda, pede ao usuário */ }
+      }
+
       const value = await input({
         message: field.label,
         default: field.placeholder || undefined,
@@ -242,8 +252,7 @@ async function installMcp(key: string): Promise<void> {
       if (!value.trim()) continue;
 
       if (field.secret) {
-        // Salva criptografado e coloca referência na env
-        const ref = `${key}-${field.key}`;
+        const ref = field.key;
         saveSecret(ref, value.trim());
         env[field.env] = makeRef(ref);
       } else {
