@@ -74,17 +74,25 @@ mcp.registerTool("list_spreadsheets", {
   description: "Lista planilhas no Google Drive",
   inputSchema: { page_size: z.number().optional(), query: z.string().optional() },
 }, async ({ page_size = 20, query }) => {
-  let q = "mimeType='application/vnd.google-apps.spreadsheet'";
-  if (query) q += ` and name contains '${query}'`;
-  const res = await drive().files.list({
-    q,
-    pageSize: page_size,
-    fields: "files(id,name,modifiedTime,webViewLink)",
-    includeItemsFromAllDrives: true,
-    supportsAllDrives: true,
-    corpora: "allDrives",
+  const mime = "mimeType='application/vnd.google-apps.spreadsheet'";
+  const nameFilter = query ? ` and name contains '${query}'` : "";
+  const d = drive();
+
+  // Busca arquivos próprios + compartilhados (duas queries, Drive API não suporta OR entre ownership)
+  const [owned, shared] = await Promise.all([
+    d.files.list({ q: mime + nameFilter, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" }),
+    d.files.list({ q: `sharedWithMe=true and ${mime}${nameFilter}`, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" }),
+  ]);
+
+  // Merge sem duplicatas
+  const seen = new Set<string>();
+  const all = [...(owned.data.files ?? []), ...(shared.data.files ?? [])].filter(f => {
+    if (seen.has(f.id!)) return false;
+    seen.add(f.id!);
+    return true;
   });
-  return { content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }] };
+
+  return { content: [{ type: "text", text: JSON.stringify(all) }] };
 });
 
 mcp.registerTool("get_spreadsheet_info", {
