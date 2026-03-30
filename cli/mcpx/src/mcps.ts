@@ -95,6 +95,40 @@ export const MCPS: McpDefinition[] = [
     ],
   },
   {
+    key: "google-sheets",
+    name: "mcpx-google-sheets",
+    description: "Google Sheets — criar, ler, escrever, formatar planilhas",
+    type: "local",
+    package: "@mcpx-io/google-sheets@latest",
+    envInputs: [
+      {
+        key: "google_sa",
+        label: "Service Account JSON (Enter para pular)",
+        placeholder: '{"type":"service_account",...}',
+        optional: true,
+        secret: true,
+        env: "GOOGLE_SERVICE_ACCOUNT",
+      },
+    ],
+  },
+  {
+    key: "apps-script",
+    name: "mcpx-apps-script",
+    description: "Google Apps Script — listar, editar scripts, versões e deployments",
+    type: "local",
+    package: "@mcpx-io/apps-script@latest",
+    envInputs: [
+      {
+        key: "google_sa",
+        label: "Service Account JSON (Enter para pular — reutiliza do google-sheets)",
+        placeholder: '{"type":"service_account",...}',
+        optional: true,
+        secret: true,
+        env: "GOOGLE_SERVICE_ACCOUNT",
+      },
+    ],
+  },
+  {
     key: "debug",
     name: "mcpx-debug",
     description: "Debug local — browser automation, HTTP requests, parse de rotas",

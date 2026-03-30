@@ -1,0 +1,33 @@
+name: Publish @mcpx-io/google-sheets
+
+on:
+  push:
+    tags:
+      - "google-sheets@*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@mcpx-io"
+
+      - name: Install dependencies
+        run: npm install --workspace=cli/google-sheets --include=dev
+
+      - name: Build
+        run: npm run build --workspace=cli/google-sheets
+
+      - name: Publish to GitHub Packages
+        run: npm publish --workspace=cli/google-sheets --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

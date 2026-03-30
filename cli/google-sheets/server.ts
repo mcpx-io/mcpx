@@ -1,0 +1,339 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { google } from "googleapis";
+import { JWT } from "google-auth-library";
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+function getAuth(scopes: string[]) {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT;
+  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT não definido. Use: mcpx secrets set google-sa");
+  const key = JSON.parse(raw);
+  return new JWT({ email: key.client_email, key: key.private_key, scopes });
+}
+
+const SHEETS_SCOPES = [
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive",
+];
+
+function sheets() {
+  return google.sheets({ version: "v4", auth: getAuth(SHEETS_SCOPES) });
+}
+function drive() {
+  return google.drive({ version: "v3", auth: getAuth(SHEETS_SCOPES) });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function getSheetId(spreadsheetId: string, sheetName: string): Promise<number> {
+  const res = await sheets().spreadsheets.get({ spreadsheetId });
+  const sheet = res.data.sheets?.find(s => s.properties?.title === sheetName);
+  if (!sheet) throw new Error(`Aba '${sheetName}' não encontrada.`);
+  return sheet.properties!.sheetId!;
+}
+
+function a1ToGrid(a1: string) {
+  const parts = a1.toUpperCase().split(":");
+  function parseCell(cell: string) {
+    const m = cell.match(/^([A-Z]+)(\d+)$/);
+    if (!m) throw new Error(`Referência inválida: ${cell}`);
+    let col = 0;
+    for (const ch of m[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+    return { r: parseInt(m[2]) - 1, c: col - 1 };
+  }
+  const start = parseCell(parts[0]);
+  const end = parts[1] ? parseCell(parts[1]) : start;
+  return { r1: start.r, r2: end.r + 1, c1: start.c, c2: end.c + 1 };
+}
+
+function colLetter(idx: number): string {
+  let s = "";
+  let n = idx;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+// ─── MCP Server ───────────────────────────────────────────────────────────────
+
+const mcp = new McpServer({ name: "@mcpx-io/google-sheets", version: "1.0.0" });
+
+// ── Planilhas ────────────────────────────────────────────────────────────────
+
+mcp.registerTool("create_spreadsheet", {
+  description: "Cria uma nova planilha no Google Sheets",
+  inputSchema: { title: z.string() },
+}, async ({ title }) => {
+  const res = await sheets().spreadsheets.create({ requestBody: { properties: { title } } });
+  return { content: [{ type: "text", text: JSON.stringify({ spreadsheet_id: res.data.spreadsheetId, url: res.data.spreadsheetUrl, title: res.data.properties?.title }) }] };
+});
+
+mcp.registerTool("list_spreadsheets", {
+  description: "Lista planilhas no Google Drive",
+  inputSchema: { page_size: z.number().optional(), query: z.string().optional() },
+}, async ({ page_size = 20, query }) => {
+  let q = "mimeType='application/vnd.google-apps.spreadsheet'";
+  if (query) q += ` and name contains '${query}'`;
+  const res = await drive().files.list({ q, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" });
+  return { content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }] };
+});
+
+mcp.registerTool("get_spreadsheet_info", {
+  description: "Retorna informações de uma planilha (título, abas, url)",
+  inputSchema: { spreadsheet_id: z.string() },
+}, async ({ spreadsheet_id }) => {
+  const res = await sheets().spreadsheets.get({ spreadsheetId: spreadsheet_id });
+  const data = res.data;
+  return { content: [{ type: "text", text: JSON.stringify({
+    title: data.properties?.title,
+    spreadsheet_id: data.spreadsheetId,
+    url: data.spreadsheetUrl,
+    sheets: data.sheets?.map(s => ({
+      title: s.properties?.title,
+      sheet_id: s.properties?.sheetId,
+      index: s.properties?.index,
+      row_count: s.properties?.gridProperties?.rowCount,
+      column_count: s.properties?.gridProperties?.columnCount,
+    })),
+  }) }] };
+});
+
+// ── Abas ─────────────────────────────────────────────────────────────────────
+
+mcp.registerTool("list_sheets", {
+  description: "Lista as abas de uma planilha",
+  inputSchema: { spreadsheet_id: z.string() },
+}, async ({ spreadsheet_id }) => {
+  const res = await sheets().spreadsheets.get({ spreadsheetId: spreadsheet_id });
+  return { content: [{ type: "text", text: JSON.stringify(res.data.sheets?.map(s => ({ title: s.properties?.title, sheet_id: s.properties?.sheetId }))) }] };
+});
+
+mcp.registerTool("add_sheet", {
+  description: "Adiciona uma nova aba à planilha",
+  inputSchema: { spreadsheet_id: z.string(), sheet_title: z.string() },
+}, async ({ spreadsheet_id, sheet_title }) => {
+  const res = await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ addSheet: { properties: { title: sheet_title } } }] } });
+  const props = res.data.replies?.[0]?.addSheet?.properties;
+  return { content: [{ type: "text", text: JSON.stringify({ sheet_id: props?.sheetId, title: props?.title }) }] };
+});
+
+mcp.registerTool("delete_sheet", {
+  description: "Remove uma aba da planilha",
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string() },
+}, async ({ spreadsheet_id, sheet_name }) => {
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ deleteSheet: { sheetId } }] } });
+  return { content: [{ type: "text", text: `Aba '${sheet_name}' removida.` }] };
+});
+
+mcp.registerTool("rename_sheet", {
+  description: "Renomeia uma aba da planilha",
+  inputSchema: { spreadsheet_id: z.string(), old_name: z.string(), new_name: z.string() },
+}, async ({ spreadsheet_id, old_name, new_name }) => {
+  const sheetId = await getSheetId(spreadsheet_id, old_name);
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateSheetProperties: { properties: { sheetId, title: new_name }, fields: "title" } }] } });
+  return { content: [{ type: "text", text: `Aba renomeada para '${new_name}'.` }] };
+});
+
+// ── Dados ─────────────────────────────────────────────────────────────────────
+
+mcp.registerTool("read_range", {
+  description: "Lê um range de células (ex: 'Sheet1!A1:C10')",
+  inputSchema: { spreadsheet_id: z.string(), range: z.string() },
+}, async ({ spreadsheet_id, range }) => {
+  const res = await sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range });
+  return { content: [{ type: "text", text: JSON.stringify({ range: res.data.range, values: res.data.values ?? [] }) }] };
+});
+
+mcp.registerTool("write_range", {
+  description: "Escreve valores em um range (ex: 'Sheet1!A1')",
+  inputSchema: { spreadsheet_id: z.string(), range: z.string(), values: z.array(z.array(z.any())), value_input_option: z.string().optional() },
+}, async ({ spreadsheet_id, range, values, value_input_option = "USER_ENTERED" }) => {
+  const res = await sheets().spreadsheets.values.update({ spreadsheetId: spreadsheet_id, range, valueInputOption: value_input_option, requestBody: { values } });
+  return { content: [{ type: "text", text: JSON.stringify({ updated_range: res.data.updatedRange, updated_rows: res.data.updatedRows, updated_cells: res.data.updatedCells }) }] };
+});
+
+mcp.registerTool("append_rows", {
+  description: "Adiciona linhas ao final de um range",
+  inputSchema: { spreadsheet_id: z.string(), range: z.string(), values: z.array(z.array(z.any())), value_input_option: z.string().optional() },
+}, async ({ spreadsheet_id, range, values, value_input_option = "USER_ENTERED" }) => {
+  const res = await sheets().spreadsheets.values.append({ spreadsheetId: spreadsheet_id, range, valueInputOption: value_input_option, insertDataOption: "INSERT_ROWS", requestBody: { values } });
+  return { content: [{ type: "text", text: JSON.stringify(res.data.updates ?? {}) }] };
+});
+
+mcp.registerTool("clear_range", {
+  description: "Limpa todos os valores de um range",
+  inputSchema: { spreadsheet_id: z.string(), range: z.string() },
+}, async ({ spreadsheet_id, range }) => {
+  await sheets().spreadsheets.values.clear({ spreadsheetId: spreadsheet_id, range, requestBody: {} });
+  return { content: [{ type: "text", text: `Range '${range}' limpo.` }] };
+});
+
+// ── Células ───────────────────────────────────────────────────────────────────
+
+mcp.registerTool("get_cell", {
+  description: "Lê o valor de uma célula específica (ex: 'Sheet1!A1')",
+  inputSchema: { spreadsheet_id: z.string(), cell: z.string() },
+}, async ({ spreadsheet_id, cell }) => {
+  const res = await sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: cell });
+  const value = res.data.values?.[0]?.[0] ?? null;
+  return { content: [{ type: "text", text: JSON.stringify({ cell, value }) }] };
+});
+
+mcp.registerTool("set_cell", {
+  description: "Define o valor de uma célula específica",
+  inputSchema: { spreadsheet_id: z.string(), cell: z.string(), value: z.any(), value_input_option: z.string().optional() },
+}, async ({ spreadsheet_id, cell, value, value_input_option = "USER_ENTERED" }) => {
+  await sheets().spreadsheets.values.update({ spreadsheetId: spreadsheet_id, range: cell, valueInputOption: value_input_option, requestBody: { values: [[value]] } });
+  return { content: [{ type: "text", text: `Célula '${cell}' atualizada.` }] };
+});
+
+// ── Fórmulas ──────────────────────────────────────────────────────────────────
+
+mcp.registerTool("set_formula", {
+  description: "Insere uma fórmula em uma célula",
+  inputSchema: { spreadsheet_id: z.string(), cell: z.string(), formula: z.string() },
+}, async ({ spreadsheet_id, cell, formula }) => {
+  const f = formula.startsWith("=") ? formula : `=${formula}`;
+  await sheets().spreadsheets.values.update({ spreadsheetId: spreadsheet_id, range: cell, valueInputOption: "USER_ENTERED", requestBody: { values: [[f]] } });
+  return { content: [{ type: "text", text: `Fórmula '${f}' inserida em '${cell}'.` }] };
+});
+
+mcp.registerTool("get_formula", {
+  description: "Retorna a fórmula de uma célula (não o valor calculado)",
+  inputSchema: { spreadsheet_id: z.string(), cell: z.string() },
+}, async ({ spreadsheet_id, cell }) => {
+  const res = await sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: cell, valueRenderOption: "FORMULA" });
+  return { content: [{ type: "text", text: JSON.stringify({ cell, formula: res.data.values?.[0]?.[0] ?? null }) }] };
+});
+
+mcp.registerTool("list_formulas", {
+  description: "Lista todas as fórmulas em um range com seus valores calculados",
+  inputSchema: { spreadsheet_id: z.string(), range: z.string() },
+}, async ({ spreadsheet_id, range }) => {
+  const [resF, resV] = await Promise.all([
+    sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range, valueRenderOption: "FORMULA" }),
+    sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range, valueRenderOption: "FORMATTED_VALUE" }),
+  ]);
+  const fGrid = resF.data.values ?? [];
+  const vGrid = resV.data.values ?? [];
+  const rawRange = resF.data.range ?? "";
+  const startRef = rawRange.includes("!") ? rawRange.split("!")[1].split(":")[0] : rawRange.split(":")[0];
+  const m = startRef.toUpperCase().match(/^([A-Z]+)(\d+)$/);
+  let startCol = 0;
+  if (m) for (const ch of m[1]) startCol = startCol * 26 + (ch.charCodeAt(0) - 64);
+  const startRow = m ? parseInt(m[2]) : 1;
+  const found: object[] = [];
+  fGrid.forEach((row, ri) => {
+    row.forEach((cell, ci) => {
+      if (typeof cell === "string" && cell.startsWith("=")) {
+        found.push({ cell: `${colLetter(startCol + ci)}${startRow + ri}`, formula: cell, calculated_value: vGrid[ri]?.[ci] ?? null });
+      }
+    });
+  });
+  return { content: [{ type: "text", text: JSON.stringify({ total_formulas: found.length, formulas: found }) }] };
+});
+
+mcp.registerTool("review_formulas", {
+  description: "Revisa fórmulas de uma aba, identificando erros (#REF!, #DIV/0!, etc.)",
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string() },
+}, async ({ spreadsheet_id, sheet_name }) => {
+  const [resF, resV] = await Promise.all([
+    sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: sheet_name, valueRenderOption: "FORMULA" }),
+    sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: sheet_name, valueRenderOption: "FORMATTED_VALUE" }),
+  ]);
+  const fGrid = resF.data.values ?? [];
+  const vGrid = resV.data.values ?? [];
+  const ERRORS = new Set(["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!"]);
+  const report = fGrid.flatMap((row, ri) =>
+    row.flatMap((cell, ci) => {
+      if (typeof cell !== "string" || !cell.startsWith("=")) return [];
+      const calc = vGrid[ri]?.[ci] ?? null;
+      const issues: string[] = [];
+      if (ERRORS.has(String(calc))) issues.push(`Erro: ${calc}`);
+      return [{ cell: `${colLetter(ci + 1)}${ri + 1}`, formula: cell, calculated_value: calc, issues, status: issues.length ? "ERROR" : "OK" }];
+    })
+  );
+  const errors = report.filter(r => (r as any).status === "ERROR");
+  return { content: [{ type: "text", text: JSON.stringify({ sheet: sheet_name, total_formulas: report.length, total_errors: errors.length, formulas: report }) }] };
+});
+
+// ── Formatação ────────────────────────────────────────────────────────────────
+
+mcp.registerTool("format_cells", {
+  description: "Formata células: bold, italic, font_size, text_color (RGB 0-1), background_color, horizontal_alignment, borders",
+  inputSchema: {
+    spreadsheet_id: z.string(), sheet_name: z.string(), range: z.string(),
+    bold: z.boolean().optional(), italic: z.boolean().optional(), font_size: z.number().optional(),
+    text_color: z.object({ red: z.number(), green: z.number(), blue: z.number() }).optional(),
+    background_color: z.object({ red: z.number(), green: z.number(), blue: z.number() }).optional(),
+    horizontal_alignment: z.enum(["LEFT", "CENTER", "RIGHT"]).optional(),
+    borders: z.boolean().optional(),
+  },
+}, async ({ spreadsheet_id, sheet_name, range, bold, italic, font_size, text_color, background_color, horizontal_alignment, borders }) => {
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const { r1, r2, c1, c2 } = a1ToGrid(range);
+  const gridRange = { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 };
+  const requests: object[] = [];
+  const fmt: Record<string, unknown> = {};
+  const fields: string[] = [];
+  const textFmt: Record<string, unknown> = {};
+  if (bold !== undefined) textFmt.bold = bold;
+  if (italic !== undefined) textFmt.italic = italic;
+  if (font_size !== undefined) textFmt.fontSize = font_size;
+  if (text_color) textFmt.foregroundColor = text_color;
+  if (Object.keys(textFmt).length) { fmt.textFormat = textFmt; fields.push("userEnteredFormat.textFormat"); }
+  if (background_color) { fmt.backgroundColor = background_color; fields.push("userEnteredFormat.backgroundColor"); }
+  if (horizontal_alignment) { fmt.horizontalAlignment = horizontal_alignment; fields.push("userEnteredFormat.horizontalAlignment"); }
+  if (fields.length) requests.push({ repeatCell: { range: gridRange, cell: { userEnteredFormat: fmt }, fields: fields.join(",") } });
+  if (borders) {
+    const bs = { style: "SOLID", width: 1, color: { red: 0, green: 0, blue: 0 } };
+    requests.push({ updateBorders: { range: gridRange, top: bs, bottom: bs, left: bs, right: bs, innerHorizontal: bs, innerVertical: bs } });
+  }
+  if (requests.length) await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests } });
+  return { content: [{ type: "text", text: `Formatação aplicada em '${range}'.` }] };
+});
+
+mcp.registerTool("set_column_width", {
+  description: "Define a largura de colunas (índices 0-based)",
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_column: z.number(), end_column: z.number(), width: z.number() },
+}, async ({ spreadsheet_id, sheet_name, start_column, end_column, width }) => {
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateDimensionProperties: { range: { sheetId, dimension: "COLUMNS", startIndex: start_column, endIndex: end_column }, properties: { pixelSize: width }, fields: "pixelSize" } }] } });
+  return { content: [{ type: "text", text: "Largura atualizada." }] };
+});
+
+mcp.registerTool("set_row_height", {
+  description: "Define a altura de linhas (índices 0-based)",
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_row: z.number(), end_row: z.number(), height: z.number() },
+}, async ({ spreadsheet_id, sheet_name, start_row, end_row, height }) => {
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateDimensionProperties: { range: { sheetId, dimension: "ROWS", startIndex: start_row, endIndex: end_row }, properties: { pixelSize: height }, fields: "pixelSize" } }] } });
+  return { content: [{ type: "text", text: "Altura atualizada." }] };
+});
+
+mcp.registerTool("merge_cells", {
+  description: "Mescla células em um range",
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), range: z.string(), merge_type: z.enum(["MERGE_ALL", "MERGE_COLUMNS", "MERGE_ROWS"]).optional() },
+}, async ({ spreadsheet_id, sheet_name, range, merge_type = "MERGE_ALL" }) => {
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const { r1, r2, c1, c2 } = a1ToGrid(range);
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ mergeCells: { range: { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 }, mergeType: merge_type } }] } });
+  return { content: [{ type: "text", text: `Células '${range}' mescladas.` }] };
+});
+
+mcp.registerTool("unmerge_cells", {
+  description: "Desfaz a mesclagem de células em um range",
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), range: z.string() },
+}, async ({ spreadsheet_id, sheet_name, range }) => {
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const { r1, r2, c1, c2 } = a1ToGrid(range);
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ unmergeCells: { range: { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 } } }] } });
+  return { content: [{ type: "text", text: `Mesclagem desfeita em '${range}'.` }] };
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+const transport = new StdioServerTransport();
+await mcp.connect(transport);
