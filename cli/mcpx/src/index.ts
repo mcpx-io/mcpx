@@ -233,6 +233,12 @@ async function installMcp(key: string): Promise<void> {
     let mcpName = mcp.name;
 
     for (const field of mcp.envInputs ?? []) {
+      // preConfigured: só adiciona a ref, sem prompt (setup externo cuida do secret)
+      if (field.preConfigured) {
+        env[field.env] = makeRef(field.key);
+        continue;
+      }
+
       if (field.secret) {
         const ref = field.key;
         // Reutiliza secret já salvo (ex: google_sa compartilhado entre google-sheets e apps-script)
@@ -269,6 +275,9 @@ async function installMcp(key: string): Promise<void> {
 
     addLocalMcp(mcpName, mcp.package!, mcp.packageArgs ?? [], env);
     console.log(`✓ "${mcpName}" adicionado ao .mcp.json (via npx — sempre @latest)`);
+    if (mcp.postInstallNote) {
+      console.log(`  ⚠  ${mcp.postInstallNote}`);
+    }
   }
 }
 

@@ -13,6 +13,7 @@ export interface McpDefinition {
   headers?: Record<string, string>;
   inputs?: McpInput[];
   secretInputs?: McpSecretInput[];
+  postInstallNote?: string; // mensagem exibida após configurar
 }
 
 export interface McpInput {
@@ -36,6 +37,7 @@ export interface McpEnvInput {
   optional?: boolean;
   env: string;
   secret?: boolean;      // se true, criptografa em ~/.mcpx/secrets.json
+  preConfigured?: boolean; // se true, adiciona mcpx:enc:<key> sem pedir ao usuário
 }
 
 export const MCPS: McpDefinition[] = [
@@ -117,15 +119,11 @@ export const MCPS: McpDefinition[] = [
     description: "Google Apps Script — listar, editar scripts, versões e deployments",
     type: "local",
     package: "@mcpx-io/apps-script@latest",
+    postInstallNote: "Execute o setup OAuth: npx @mcpx-io/apps-script@latest setup",
     envInputs: [
-      {
-        key: "google_sa",
-        label: "Service Account JSON (Enter para pular — reutiliza do google-sheets)",
-        placeholder: '{"type":"service_account",...}',
-        optional: true,
-        secret: true,
-        env: "GOOGLE_SERVICE_ACCOUNT",
-      },
+      { key: "apps_script_client_id",     env: "GOOGLE_CLIENT_ID",     label: "", placeholder: "", preConfigured: true },
+      { key: "apps_script_client_secret", env: "GOOGLE_CLIENT_SECRET", label: "", placeholder: "", preConfigured: true },
+      { key: "apps_script_refresh_token", env: "GOOGLE_REFRESH_TOKEN", label: "", placeholder: "", preConfigured: true },
     ],
   },
   {

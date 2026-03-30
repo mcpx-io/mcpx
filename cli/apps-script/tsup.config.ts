@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["server.ts"],
+  entry: ["server.ts", "setup-oauth.ts"],
   format: ["cjs"],
   outDir: "dist",
   splitting: false,

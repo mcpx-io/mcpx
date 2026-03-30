@@ -1,10 +1,11 @@
 {
   "name": "@mcpx-io/apps-script",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "type": "commonjs",
   "description": "MCP local para Google Apps Script — listar, ler, editar scripts, criar versões e deployments",
   "bin": {
-    "mcpx-apps-script": "dist/server.js"
+    "mcpx-apps-script": "dist/server.js",
+    "mcpx-apps-script-setup": "dist/setup-oauth.js"
   },
   "files": ["dist"],
   "publishConfig": {

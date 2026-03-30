@@ -2,24 +2,25 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { google } from "googleapis";
-import { JWT } from "google-auth-library";
+import { OAuth2Client } from "google-auth-library";
 import { resolveValue } from "./secrets.js";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 function getAuth() {
-  const raw = resolveValue(process.env.GOOGLE_SERVICE_ACCOUNT ?? "");
-  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT não definido. Use: mcpx secrets set google_sa");
-  const key = JSON.parse(raw);
-  return new JWT({
-    email: key.client_email,
-    key: key.private_key,
-    scopes: [
-      "https://www.googleapis.com/auth/script.projects",
-      "https://www.googleapis.com/auth/script.deployments",
-      "https://www.googleapis.com/auth/drive",
-    ],
-  });
+  const clientId = resolveValue(process.env.GOOGLE_CLIENT_ID ?? "");
+  const clientSecret = resolveValue(process.env.GOOGLE_CLIENT_SECRET ?? "");
+  const refreshToken = resolveValue(process.env.GOOGLE_REFRESH_TOKEN ?? "");
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(
+      "OAuth não configurado. Execute: npx @mcpx-io/apps-script@latest setup"
+    );
+  }
+
+  const auth = new OAuth2Client({ clientId, clientSecret });
+  auth.setCredentials({ refresh_token: refreshToken });
+  return auth;
 }
 
 function script() {
