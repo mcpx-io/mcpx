@@ -1,7 +1,7 @@
 {
   "name": "@mcpx-io/google-sheets",
-  "version": "1.0.6",
-  "type": "module",
+  "version": "1.0.7",
+  "type": "commonjs",
   "description": "MCP local para Google Sheets — criar, ler, escrever, formatar planilhas via service account",
   "bin": {
     "mcpx-google-sheets": "dist/server.js"
