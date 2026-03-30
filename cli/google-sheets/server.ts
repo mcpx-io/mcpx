@@ -351,5 +351,9 @@ mcp.registerTool("unmerge_cells", {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-const transport = new StdioServerTransport();
-await mcp.connect(transport);
+async function main() {
+  const transport = new StdioServerTransport();
+  await mcp.connect(transport);
+}
+
+main().catch(console.error);
