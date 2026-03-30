@@ -167,9 +167,12 @@ mcp.registerTool("delete_deployment", {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await mcp.connect(transport);
+if (process.argv[2] === "setup") {
+  require("./setup-oauth.js");
+} else {
+  async function main() {
+    const transport = new StdioServerTransport();
+    await mcp.connect(transport);
+  }
+  main().catch(console.error);
 }
-
-main().catch(console.error);
