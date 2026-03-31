@@ -102,15 +102,11 @@ export const MCPS: McpDefinition[] = [
     description: "Google Sheets — criar, ler, escrever, formatar planilhas",
     type: "local",
     package: "@mcpx-io/google-sheets@latest",
+    postInstallNote: "Execute o setup OAuth: npx @mcpx-io/apps-script@latest setup",
     envInputs: [
-      {
-        key: "google_sa",
-        label: "Service Account JSON (Enter para pular)",
-        placeholder: '{"type":"service_account",...}',
-        optional: true,
-        secret: true,
-        env: "GOOGLE_SERVICE_ACCOUNT",
-      },
+      { key: "apps_script_client_id",     env: "GOOGLE_CLIENT_ID",     label: "", placeholder: "", preConfigured: true },
+      { key: "apps_script_client_secret", env: "GOOGLE_CLIENT_SECRET", label: "", placeholder: "", preConfigured: true },
+      { key: "apps_script_refresh_token", env: "GOOGLE_REFRESH_TOKEN", label: "", placeholder: "", preConfigured: true },
     ],
   },
   {

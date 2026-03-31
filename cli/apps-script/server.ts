@@ -30,6 +30,13 @@ function drive() {
   return google.drive({ version: "v3", auth: getAuth() });
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseScriptId(input: string): string {
+  const m = input.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : input;
+}
+
 // ─── MCP Server ───────────────────────────────────────────────────────────────
 
 const mcp = new McpServer({ name: "@mcpx-io/apps-script", version: "1.0.0" });
@@ -74,7 +81,7 @@ mcp.registerTool("list_scripts", {
 mcp.registerTool("get_script", {
   description: "Retorna metadados de um projeto Apps Script",
   inputSchema: { script_id: z.string() },
-}, async ({ script_id }) => {
+}, async ({ script_id: _sid }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.get({ scriptId: script_id });
   return { content: [{ type: "text", text: JSON.stringify(res.data) }] };
 });
@@ -92,7 +99,7 @@ mcp.registerTool("create_script", {
 mcp.registerTool("get_script_files", {
   description: "Retorna todos os arquivos de código de um projeto Apps Script",
   inputSchema: { script_id: z.string() },
-}, async ({ script_id }) => {
+}, async ({ script_id: _sid }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.getContent({ scriptId: script_id });
   return { content: [{ type: "text", text: JSON.stringify(res.data.files?.map(f => ({ name: f.name, type: f.type, source: f.source })) ?? []) }] };
 });
@@ -107,7 +114,7 @@ mcp.registerTool("update_script_files", {
       source: z.string(),
     })),
   },
-}, async ({ script_id, files }) => {
+}, async ({ script_id: _sid, files }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.updateContent({ scriptId: script_id, requestBody: { files } });
   return { content: [{ type: "text", text: JSON.stringify({ updated: res.data.files?.length ?? 0, files: res.data.files?.map(f => f.name) }) }] };
 });
@@ -115,7 +122,7 @@ mcp.registerTool("update_script_files", {
 mcp.registerTool("get_file_source", {
   description: "Retorna o código-fonte de um arquivo específico do projeto",
   inputSchema: { script_id: z.string(), file_name: z.string() },
-}, async ({ script_id, file_name }) => {
+}, async ({ script_id: _sid, file_name }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.getContent({ scriptId: script_id });
   const file = res.data.files?.find(f => f.name === file_name);
   if (!file) throw new Error(`Arquivo '${file_name}' não encontrado.`);
@@ -127,7 +134,7 @@ mcp.registerTool("get_file_source", {
 mcp.registerTool("list_versions", {
   description: "Lista as versões de um projeto Apps Script",
   inputSchema: { script_id: z.string() },
-}, async ({ script_id }) => {
+}, async ({ script_id: _sid }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.versions.list({ scriptId: script_id });
   return { content: [{ type: "text", text: JSON.stringify(res.data.versions ?? []) }] };
 });
@@ -135,7 +142,7 @@ mcp.registerTool("list_versions", {
 mcp.registerTool("create_version", {
   description: "Cria uma nova versão imutável do projeto (necessário para deployments)",
   inputSchema: { script_id: z.string(), description: z.string().optional() },
-}, async ({ script_id, description }) => {
+}, async ({ script_id: _sid, description }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.versions.create({ scriptId: script_id, requestBody: { description } });
   return { content: [{ type: "text", text: JSON.stringify({ version_number: res.data.versionNumber, description: res.data.description, create_time: res.data.createTime }) }] };
 });
@@ -145,7 +152,7 @@ mcp.registerTool("create_version", {
 mcp.registerTool("list_deployments", {
   description: "Lista os deployments de um projeto Apps Script",
   inputSchema: { script_id: z.string() },
-}, async ({ script_id }) => {
+}, async ({ script_id: _sid }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.deployments.list({ scriptId: script_id });
   return { content: [{ type: "text", text: JSON.stringify(res.data.deployments ?? []) }] };
 });
@@ -158,7 +165,7 @@ mcp.registerTool("create_deployment", {
     description: z.string().optional(),
     access: z.enum(["MYSELF", "DOMAIN", "ANYONE", "ANYONE_ANONYMOUS"]).optional(),
   },
-}, async ({ script_id, version_number, description, access = "ANYONE" }) => {
+}, async ({ script_id: _sid, version_number, description, access = "ANYONE" }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.deployments.create({
     scriptId: script_id,
     requestBody: {
@@ -173,7 +180,7 @@ mcp.registerTool("create_deployment", {
 mcp.registerTool("update_deployment", {
   description: "Atualiza um deployment existente para uma nova versão",
   inputSchema: { script_id: z.string(), deployment_id: z.string(), version_number: z.number(), description: z.string().optional() },
-}, async ({ script_id, deployment_id, version_number, description }) => {
+}, async ({ script_id: _sid, deployment_id, version_number, description }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.deployments.update({
     scriptId: script_id,
     deploymentId: deployment_id,
@@ -185,7 +192,7 @@ mcp.registerTool("update_deployment", {
 mcp.registerTool("delete_deployment", {
   description: "Remove um deployment de um projeto Apps Script",
   inputSchema: { script_id: z.string(), deployment_id: z.string() },
-}, async ({ script_id, deployment_id }) => {
+}, async ({ script_id: _sid, deployment_id }) => { const script_id = parseScriptId(_sid);
   await script().projects.deployments.delete({ scriptId: script_id, deploymentId: deployment_id });
   return { content: [{ type: "text", text: `Deployment '${deployment_id}' removido.` }] };
 });

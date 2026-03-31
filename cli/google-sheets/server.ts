@@ -2,31 +2,40 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { google } from "googleapis";
-import { JWT } from "google-auth-library";
+import { OAuth2Client } from "google-auth-library";
 import { resolveValue } from "./secrets.js";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-function getAuth(scopes: string[]) {
-  const raw = resolveValue(process.env.GOOGLE_SERVICE_ACCOUNT ?? "");
-  if (!raw) throw new Error("GOOGLE_SERVICE_ACCOUNT não definido. Use: mcpx secrets set google_sa");
-  const key = JSON.parse(raw);
-  return new JWT({ email: key.client_email, key: key.private_key, scopes });
-}
+function getAuth() {
+  const clientId = resolveValue(process.env.GOOGLE_CLIENT_ID ?? "");
+  const clientSecret = resolveValue(process.env.GOOGLE_CLIENT_SECRET ?? "");
+  const refreshToken = resolveValue(process.env.GOOGLE_REFRESH_TOKEN ?? "");
 
-const SHEETS_SCOPES = [
-  "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/drive",
-];
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error(
+      "OAuth não configurado. Execute: npx @mcpx-io/apps-script@latest setup"
+    );
+  }
+
+  const auth = new OAuth2Client({ clientId, clientSecret });
+  auth.setCredentials({ refresh_token: refreshToken });
+  return auth;
+}
 
 function sheets() {
-  return google.sheets({ version: "v4", auth: getAuth(SHEETS_SCOPES) });
+  return google.sheets({ version: "v4", auth: getAuth() });
 }
 function drive() {
-  return google.drive({ version: "v3", auth: getAuth(SHEETS_SCOPES) });
+  return google.drive({ version: "v3", auth: getAuth() });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseSpreadsheetId(input: string): string {
+  const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : input;
+}
 
 async function getSheetId(spreadsheetId: string, sheetName: string): Promise<number> {
   const res = await sheets().spreadsheets.get({ spreadsheetId });
@@ -72,23 +81,33 @@ mcp.registerTool("create_spreadsheet", {
 
 mcp.registerTool("list_spreadsheets", {
   description: "Lista planilhas no Google Drive",
-  inputSchema: { page_size: z.number().optional(), query: z.string().optional() },
-}, async ({ page_size = 20, query }) => {
-  const mime = "mimeType='application/vnd.google-apps.spreadsheet'";
+  inputSchema: { query: z.string().optional() },
+}, async ({ query }) => {
+  const mime = "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
   const nameFilter = query ? ` and name contains '${query}'` : "";
   const d = drive();
+  const fields = "nextPageToken,files(id,name,modifiedTime,webViewLink,owners)";
 
-  // Busca arquivos próprios + compartilhados (duas queries, Drive API não suporta OR entre ownership)
+  async function fetchAll(q: string): Promise<any[]> {
+    const results: any[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res: any = await d.files.list({ q, pageSize: 100, fields, pageToken });
+      results.push(...(res.data.files ?? []));
+      pageToken = res.data.nextPageToken ?? undefined;
+    } while (pageToken);
+    return results;
+  }
+
   const [owned, shared] = await Promise.all([
-    d.files.list({ q: mime + nameFilter, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" }),
-    d.files.list({ q: `sharedWithMe=true and ${mime}${nameFilter}`, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" }),
+    fetchAll(`${mime}${nameFilter}`),
+    fetchAll(`sharedWithMe=true and ${mime}${nameFilter}`),
   ]);
 
-  // Merge sem duplicatas
   const seen = new Set<string>();
-  const all = [...(owned.data.files ?? []), ...(shared.data.files ?? [])].filter(f => {
-    if (seen.has(f.id!)) return false;
-    seen.add(f.id!);
+  const all = [...owned, ...shared].filter(f => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
     return true;
   });
 
@@ -98,7 +117,7 @@ mcp.registerTool("list_spreadsheets", {
 mcp.registerTool("get_spreadsheet_info", {
   description: "Retorna informações de uma planilha (título, abas, url)",
   inputSchema: { spreadsheet_id: z.string() },
-}, async ({ spreadsheet_id }) => {
+}, async ({ spreadsheet_id: _sid }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.get({ spreadsheetId: spreadsheet_id });
   const data = res.data;
   return { content: [{ type: "text", text: JSON.stringify({
@@ -120,7 +139,7 @@ mcp.registerTool("get_spreadsheet_info", {
 mcp.registerTool("list_sheets", {
   description: "Lista as abas de uma planilha",
   inputSchema: { spreadsheet_id: z.string() },
-}, async ({ spreadsheet_id }) => {
+}, async ({ spreadsheet_id: _sid }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.get({ spreadsheetId: spreadsheet_id });
   return { content: [{ type: "text", text: JSON.stringify(res.data.sheets?.map(s => ({ title: s.properties?.title, sheet_id: s.properties?.sheetId }))) }] };
 });
@@ -128,7 +147,7 @@ mcp.registerTool("list_sheets", {
 mcp.registerTool("add_sheet", {
   description: "Adiciona uma nova aba à planilha",
   inputSchema: { spreadsheet_id: z.string(), sheet_title: z.string() },
-}, async ({ spreadsheet_id, sheet_title }) => {
+}, async ({ spreadsheet_id: _sid, sheet_title }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ addSheet: { properties: { title: sheet_title } } }] } });
   const props = res.data.replies?.[0]?.addSheet?.properties;
   return { content: [{ type: "text", text: JSON.stringify({ sheet_id: props?.sheetId, title: props?.title }) }] };
@@ -137,7 +156,7 @@ mcp.registerTool("add_sheet", {
 mcp.registerTool("delete_sheet", {
   description: "Remove uma aba da planilha",
   inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string() },
-}, async ({ spreadsheet_id, sheet_name }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ deleteSheet: { sheetId } }] } });
   return { content: [{ type: "text", text: `Aba '${sheet_name}' removida.` }] };
@@ -146,7 +165,7 @@ mcp.registerTool("delete_sheet", {
 mcp.registerTool("rename_sheet", {
   description: "Renomeia uma aba da planilha",
   inputSchema: { spreadsheet_id: z.string(), old_name: z.string(), new_name: z.string() },
-}, async ({ spreadsheet_id, old_name, new_name }) => {
+}, async ({ spreadsheet_id: _sid, old_name, new_name }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, old_name);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateSheetProperties: { properties: { sheetId, title: new_name }, fields: "title" } }] } });
   return { content: [{ type: "text", text: `Aba renomeada para '${new_name}'.` }] };
@@ -157,7 +176,7 @@ mcp.registerTool("rename_sheet", {
 mcp.registerTool("read_range", {
   description: "Lê um range de células (ex: 'Sheet1!A1:C10')",
   inputSchema: { spreadsheet_id: z.string(), range: z.string() },
-}, async ({ spreadsheet_id, range }) => {
+}, async ({ spreadsheet_id: _sid, range }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range });
   return { content: [{ type: "text", text: JSON.stringify({ range: res.data.range, values: res.data.values ?? [] }) }] };
 });
@@ -165,7 +184,7 @@ mcp.registerTool("read_range", {
 mcp.registerTool("write_range", {
   description: "Escreve valores em um range (ex: 'Sheet1!A1')",
   inputSchema: { spreadsheet_id: z.string(), range: z.string(), values: z.array(z.array(z.any())), value_input_option: z.string().optional() },
-}, async ({ spreadsheet_id, range, values, value_input_option = "USER_ENTERED" }) => {
+}, async ({ spreadsheet_id: _sid, range, values, value_input_option = "USER_ENTERED" }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.values.update({ spreadsheetId: spreadsheet_id, range, valueInputOption: value_input_option, requestBody: { values } });
   return { content: [{ type: "text", text: JSON.stringify({ updated_range: res.data.updatedRange, updated_rows: res.data.updatedRows, updated_cells: res.data.updatedCells }) }] };
 });
@@ -173,7 +192,7 @@ mcp.registerTool("write_range", {
 mcp.registerTool("append_rows", {
   description: "Adiciona linhas ao final de um range",
   inputSchema: { spreadsheet_id: z.string(), range: z.string(), values: z.array(z.array(z.any())), value_input_option: z.string().optional() },
-}, async ({ spreadsheet_id, range, values, value_input_option = "USER_ENTERED" }) => {
+}, async ({ spreadsheet_id: _sid, range, values, value_input_option = "USER_ENTERED" }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.values.append({ spreadsheetId: spreadsheet_id, range, valueInputOption: value_input_option, insertDataOption: "INSERT_ROWS", requestBody: { values } });
   return { content: [{ type: "text", text: JSON.stringify(res.data.updates ?? {}) }] };
 });
@@ -181,7 +200,7 @@ mcp.registerTool("append_rows", {
 mcp.registerTool("clear_range", {
   description: "Limpa todos os valores de um range",
   inputSchema: { spreadsheet_id: z.string(), range: z.string() },
-}, async ({ spreadsheet_id, range }) => {
+}, async ({ spreadsheet_id: _sid, range }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   await sheets().spreadsheets.values.clear({ spreadsheetId: spreadsheet_id, range, requestBody: {} });
   return { content: [{ type: "text", text: `Range '${range}' limpo.` }] };
 });
@@ -191,7 +210,7 @@ mcp.registerTool("clear_range", {
 mcp.registerTool("get_cell", {
   description: "Lê o valor de uma célula específica (ex: 'Sheet1!A1')",
   inputSchema: { spreadsheet_id: z.string(), cell: z.string() },
-}, async ({ spreadsheet_id, cell }) => {
+}, async ({ spreadsheet_id: _sid, cell }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: cell });
   const value = res.data.values?.[0]?.[0] ?? null;
   return { content: [{ type: "text", text: JSON.stringify({ cell, value }) }] };
@@ -200,7 +219,7 @@ mcp.registerTool("get_cell", {
 mcp.registerTool("set_cell", {
   description: "Define o valor de uma célula específica",
   inputSchema: { spreadsheet_id: z.string(), cell: z.string(), value: z.any(), value_input_option: z.string().optional() },
-}, async ({ spreadsheet_id, cell, value, value_input_option = "USER_ENTERED" }) => {
+}, async ({ spreadsheet_id: _sid, cell, value, value_input_option = "USER_ENTERED" }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   await sheets().spreadsheets.values.update({ spreadsheetId: spreadsheet_id, range: cell, valueInputOption: value_input_option, requestBody: { values: [[value]] } });
   return { content: [{ type: "text", text: `Célula '${cell}' atualizada.` }] };
 });
@@ -210,7 +229,7 @@ mcp.registerTool("set_cell", {
 mcp.registerTool("set_formula", {
   description: "Insere uma fórmula em uma célula",
   inputSchema: { spreadsheet_id: z.string(), cell: z.string(), formula: z.string() },
-}, async ({ spreadsheet_id, cell, formula }) => {
+}, async ({ spreadsheet_id: _sid, cell, formula }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const f = formula.startsWith("=") ? formula : `=${formula}`;
   await sheets().spreadsheets.values.update({ spreadsheetId: spreadsheet_id, range: cell, valueInputOption: "USER_ENTERED", requestBody: { values: [[f]] } });
   return { content: [{ type: "text", text: `Fórmula '${f}' inserida em '${cell}'.` }] };
@@ -219,7 +238,7 @@ mcp.registerTool("set_formula", {
 mcp.registerTool("get_formula", {
   description: "Retorna a fórmula de uma célula (não o valor calculado)",
   inputSchema: { spreadsheet_id: z.string(), cell: z.string() },
-}, async ({ spreadsheet_id, cell }) => {
+}, async ({ spreadsheet_id: _sid, cell }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: cell, valueRenderOption: "FORMULA" });
   return { content: [{ type: "text", text: JSON.stringify({ cell, formula: res.data.values?.[0]?.[0] ?? null }) }] };
 });
@@ -227,7 +246,7 @@ mcp.registerTool("get_formula", {
 mcp.registerTool("list_formulas", {
   description: "Lista todas as fórmulas em um range com seus valores calculados",
   inputSchema: { spreadsheet_id: z.string(), range: z.string() },
-}, async ({ spreadsheet_id, range }) => {
+}, async ({ spreadsheet_id: _sid, range }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const [resF, resV] = await Promise.all([
     sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range, valueRenderOption: "FORMULA" }),
     sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range, valueRenderOption: "FORMATTED_VALUE" }),
@@ -254,7 +273,7 @@ mcp.registerTool("list_formulas", {
 mcp.registerTool("review_formulas", {
   description: "Revisa fórmulas de uma aba, identificando erros (#REF!, #DIV/0!, etc.)",
   inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string() },
-}, async ({ spreadsheet_id, sheet_name }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const [resF, resV] = await Promise.all([
     sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: sheet_name, valueRenderOption: "FORMULA" }),
     sheets().spreadsheets.values.get({ spreadsheetId: spreadsheet_id, range: sheet_name, valueRenderOption: "FORMATTED_VALUE" }),
@@ -287,7 +306,7 @@ mcp.registerTool("format_cells", {
     horizontal_alignment: z.enum(["LEFT", "CENTER", "RIGHT"]).optional(),
     borders: z.boolean().optional(),
   },
-}, async ({ spreadsheet_id, sheet_name, range, bold, italic, font_size, text_color, background_color, horizontal_alignment, borders }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name, range, bold, italic, font_size, text_color, background_color, horizontal_alignment, borders }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   const { r1, r2, c1, c2 } = a1ToGrid(range);
   const gridRange = { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 };
@@ -314,7 +333,7 @@ mcp.registerTool("format_cells", {
 mcp.registerTool("set_column_width", {
   description: "Define a largura de colunas (índices 0-based)",
   inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_column: z.number(), end_column: z.number(), width: z.number() },
-}, async ({ spreadsheet_id, sheet_name, start_column, end_column, width }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name, start_column, end_column, width }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateDimensionProperties: { range: { sheetId, dimension: "COLUMNS", startIndex: start_column, endIndex: end_column }, properties: { pixelSize: width }, fields: "pixelSize" } }] } });
   return { content: [{ type: "text", text: "Largura atualizada." }] };
@@ -323,7 +342,7 @@ mcp.registerTool("set_column_width", {
 mcp.registerTool("set_row_height", {
   description: "Define a altura de linhas (índices 0-based)",
   inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_row: z.number(), end_row: z.number(), height: z.number() },
-}, async ({ spreadsheet_id, sheet_name, start_row, end_row, height }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name, start_row, end_row, height }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateDimensionProperties: { range: { sheetId, dimension: "ROWS", startIndex: start_row, endIndex: end_row }, properties: { pixelSize: height }, fields: "pixelSize" } }] } });
   return { content: [{ type: "text", text: "Altura atualizada." }] };
@@ -332,7 +351,7 @@ mcp.registerTool("set_row_height", {
 mcp.registerTool("merge_cells", {
   description: "Mescla células em um range",
   inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), range: z.string(), merge_type: z.enum(["MERGE_ALL", "MERGE_COLUMNS", "MERGE_ROWS"]).optional() },
-}, async ({ spreadsheet_id, sheet_name, range, merge_type = "MERGE_ALL" }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name, range, merge_type = "MERGE_ALL" }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   const { r1, r2, c1, c2 } = a1ToGrid(range);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ mergeCells: { range: { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 }, mergeType: merge_type } }] } });
@@ -342,7 +361,7 @@ mcp.registerTool("merge_cells", {
 mcp.registerTool("unmerge_cells", {
   description: "Desfaz a mesclagem de células em um range",
   inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), range: z.string() },
-}, async ({ spreadsheet_id, sheet_name, range }) => {
+}, async ({ spreadsheet_id: _sid, sheet_name, range }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   const { r1, r2, c1, c2 } = a1ToGrid(range);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ unmergeCells: { range: { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 } } }] } });
