@@ -85,12 +85,12 @@ async function main() {
     process.exit(1);
   }
 
-  saveSecret("apps_script_client_id", clientId);
-  saveSecret("apps_script_client_secret", clientSecret);
-  saveSecret("apps_script_refresh_token", tokens.refresh_token);
+  saveSecret("google_client_id", clientId);
+  saveSecret("google_client_secret", clientSecret);
+  saveSecret("google_refresh_token", tokens.refresh_token);
 
   process.stdout.write("\n✅ OAuth configurado!\n");
-  process.stdout.write("Secrets salvos: apps_script_client_id, apps_script_client_secret, apps_script_refresh_token\n");
+  process.stdout.write("Secrets salvos: google_client_id, google_client_secret, google_refresh_token\n");
   process.stdout.write("\nRecarregue o Claude Code para usar o MCP de Apps Script.\n");
   process.exit(0);
 }

@@ -10,6 +10,7 @@ import {
 import {
   saveSecret, loadSecret, deleteSecret, listSecrets, makeRef,
 } from "./secrets.js";
+import { oauthSecretsExist, runOAuthFlow } from "./oauth.js";
 
 const program = new Command();
 
@@ -231,6 +232,11 @@ async function installMcp(key: string): Promise<void> {
   } else {
     const env: Record<string, string> = {};
     let mcpName = mcp.name;
+
+    // OAuth: roda fluxo interativo se secrets não existem ainda
+    if (mcp.oauthSetup && !oauthSecretsExist(mcp.oauthSetup)) {
+      await runOAuthFlow(mcp.oauthSetup);
+    }
 
     for (const field of mcp.envInputs ?? []) {
       // preConfigured: só adiciona a ref, sem prompt (setup externo cuida do secret)

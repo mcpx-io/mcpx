@@ -1,5 +1,11 @@
 export type McpType = "remote" | "local";
 
+export interface OAuthSetup {
+  scopes: string[];
+  redirectUri: string;
+  secrets: { clientId: string; clientSecret: string; refreshToken: string };
+}
+
 export interface McpDefinition {
   key: string;
   name: string;
@@ -13,7 +19,8 @@ export interface McpDefinition {
   headers?: Record<string, string>;
   inputs?: McpInput[];
   secretInputs?: McpSecretInput[];
-  postInstallNote?: string; // mensagem exibida após configurar
+  postInstallNote?: string;
+  oauthSetup?: OAuthSetup;
 }
 
 export interface McpInput {
@@ -39,6 +46,21 @@ export interface McpEnvInput {
   secret?: boolean;      // se true, criptografa em ~/.mcpx/secrets.json
   preConfigured?: boolean; // se true, adiciona mcpx:enc:<key> sem pedir ao usuário
 }
+
+const GOOGLE_OAUTH: OAuthSetup = {
+  scopes: [
+    "https://www.googleapis.com/auth/script.projects",
+    "https://www.googleapis.com/auth/script.deployments",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets",
+  ],
+  redirectUri: "http://localhost:3000/callback",
+  secrets: {
+    clientId: "google_client_id",
+    clientSecret: "google_client_secret",
+    refreshToken: "google_refresh_token",
+  },
+};
 
 export const MCPS: McpDefinition[] = [
   {
@@ -102,11 +124,11 @@ export const MCPS: McpDefinition[] = [
     description: "Google Sheets — criar, ler, escrever, formatar planilhas",
     type: "local",
     package: "@mcpx-io/google-sheets@latest",
-    postInstallNote: "Execute o setup OAuth: npx @mcpx-io/apps-script@latest setup",
+    oauthSetup: GOOGLE_OAUTH,
     envInputs: [
-      { key: "apps_script_client_id",     env: "GOOGLE_CLIENT_ID",     label: "", placeholder: "", preConfigured: true },
-      { key: "apps_script_client_secret", env: "GOOGLE_CLIENT_SECRET", label: "", placeholder: "", preConfigured: true },
-      { key: "apps_script_refresh_token", env: "GOOGLE_REFRESH_TOKEN", label: "", placeholder: "", preConfigured: true },
+      { key: "google_client_id",     env: "GOOGLE_CLIENT_ID",     label: "", placeholder: "", preConfigured: true },
+      { key: "google_client_secret", env: "GOOGLE_CLIENT_SECRET", label: "", placeholder: "", preConfigured: true },
+      { key: "google_refresh_token", env: "GOOGLE_REFRESH_TOKEN", label: "", placeholder: "", preConfigured: true },
     ],
   },
   {
@@ -115,11 +137,11 @@ export const MCPS: McpDefinition[] = [
     description: "Google Apps Script — listar, editar scripts, versões e deployments",
     type: "local",
     package: "@mcpx-io/apps-script@latest",
-    postInstallNote: "Execute o setup OAuth: npx @mcpx-io/apps-script@latest setup",
+    oauthSetup: GOOGLE_OAUTH,
     envInputs: [
-      { key: "apps_script_client_id",     env: "GOOGLE_CLIENT_ID",     label: "", placeholder: "", preConfigured: true },
-      { key: "apps_script_client_secret", env: "GOOGLE_CLIENT_SECRET", label: "", placeholder: "", preConfigured: true },
-      { key: "apps_script_refresh_token", env: "GOOGLE_REFRESH_TOKEN", label: "", placeholder: "", preConfigured: true },
+      { key: "google_client_id",     env: "GOOGLE_CLIENT_ID",     label: "", placeholder: "", preConfigured: true },
+      { key: "google_client_secret", env: "GOOGLE_CLIENT_SECRET", label: "", placeholder: "", preConfigured: true },
+      { key: "google_refresh_token", env: "GOOGLE_REFRESH_TOKEN", label: "", placeholder: "", preConfigured: true },
     ],
   },
   {
