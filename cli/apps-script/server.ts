@@ -98,13 +98,14 @@ mcp.registerTool("create_script", {
 
 mcp.registerTool("get_script_files", {
   description: "Lista arquivos de um projeto Apps Script. names_only=true retorna só nomes/tipos (sem código-fonte).",
-  inputSchema: { script_id: z.string(), names_only: z.coerce.boolean().optional() },
-}, async ({ script_id: _sid, names_only = false }) => { const script_id = parseScriptId(_sid);
+  inputSchema: { script_id: z.string(), names_only: z.string().optional() },
+}, async ({ script_id: _sid, names_only }) => { const script_id = parseScriptId(_sid);
+  const onlyNames = names_only === "true" || names_only === true as any;
   const res = await script().projects.getContent({ scriptId: script_id });
   const files = res.data.files ?? [];
-  const result = names_only
-    ? files.map(f => ({ name: f.name, type: f.type }))
-    : files.map(f => ({ name: f.name, type: f.type, source: f.source }));
+  const result = onlyNames
+    ? files.map((f: any) => ({ name: f.name, type: f.type }))
+    : files.map((f: any) => ({ name: f.name, type: f.type, source: f.source }));
   return { content: [{ type: "text", text: JSON.stringify(result) }] };
 });
 
