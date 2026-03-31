@@ -38,12 +38,24 @@ const mcp = new McpServer({ name: "@mcpx-io/apps-script", version: "1.0.0" });
 
 mcp.registerTool("list_scripts", {
   description: "Lista projetos de Apps Script no Google Drive",
-  inputSchema: { page_size: z.number().optional(), query: z.string().optional() },
-}, async ({ page_size = 20, query }) => {
-  let q = "mimeType='application/vnd.google-apps.script'";
+  inputSchema: { query: z.string().optional() },
+}, async ({ query }) => {
+  let q = "mimeType='application/vnd.google-apps.script' and trashed=false";
   if (query) q += ` and name contains '${query}'`;
-  const res = await drive().files.list({ q, pageSize: page_size, fields: "files(id,name,modifiedTime,webViewLink)" });
-  return { content: [{ type: "text", text: JSON.stringify(res.data.files ?? []) }] };
+  const d = drive();
+  const all: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res: any = await d.files.list({
+      q,
+      pageSize: 100,
+      fields: "nextPageToken,files(id,name,modifiedTime,webViewLink,owners)",
+      pageToken,
+    });
+    all.push(...(res.data.files ?? []));
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return { content: [{ type: "text", text: JSON.stringify(all) }] };
 });
 
 mcp.registerTool("get_script", {
