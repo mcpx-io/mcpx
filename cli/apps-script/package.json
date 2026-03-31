@@ -1,6 +1,6 @@
 {
   "name": "@mcpx-io/apps-script",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "type": "commonjs",
   "description": "MCP local para Google Apps Script — listar, ler, editar scripts, criar versões e deployments",
   "bin": {

@@ -98,7 +98,7 @@ mcp.registerTool("create_script", {
 
 mcp.registerTool("get_script_files", {
   description: "Lista arquivos de um projeto Apps Script. names_only=true retorna só nomes/tipos (sem código-fonte).",
-  inputSchema: { script_id: z.string(), names_only: z.boolean().optional() },
+  inputSchema: { script_id: z.string(), names_only: z.coerce.boolean().optional() },
 }, async ({ script_id: _sid, names_only = false }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.getContent({ scriptId: script_id });
   const files = res.data.files ?? [];
