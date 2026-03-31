@@ -97,11 +97,15 @@ mcp.registerTool("create_script", {
 // ── Arquivos (código-fonte) ───────────────────────────────────────────────────
 
 mcp.registerTool("get_script_files", {
-  description: "Retorna todos os arquivos de código de um projeto Apps Script",
-  inputSchema: { script_id: z.string() },
-}, async ({ script_id: _sid }) => { const script_id = parseScriptId(_sid);
+  description: "Lista arquivos de um projeto Apps Script. names_only=true retorna só nomes/tipos (sem código-fonte).",
+  inputSchema: { script_id: z.string(), names_only: z.boolean().optional() },
+}, async ({ script_id: _sid, names_only = false }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.getContent({ scriptId: script_id });
-  return { content: [{ type: "text", text: JSON.stringify(res.data.files?.map(f => ({ name: f.name, type: f.type, source: f.source })) ?? []) }] };
+  const files = res.data.files ?? [];
+  const result = names_only
+    ? files.map(f => ({ name: f.name, type: f.type }))
+    : files.map(f => ({ name: f.name, type: f.type, source: f.source }));
+  return { content: [{ type: "text", text: JSON.stringify(result) }] };
 });
 
 mcp.registerTool("update_script_files", {
