@@ -105,6 +105,8 @@ export async function runOAuthFlow(setup: OAuthSetup): Promise<boolean> {
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 
   console.log("\n  Abrindo browser para autorização...");
+  console.log("  Se não abrir, acesse:\n");
+  console.log("  " + authUrl + "\n");
   openBrowser(authUrl);
 
   // Extrai porta do redirect URI
