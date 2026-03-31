@@ -40,21 +40,34 @@ mcp.registerTool("list_scripts", {
   description: "Lista projetos de Apps Script no Google Drive",
   inputSchema: { query: z.string().optional() },
 }, async ({ query }) => {
-  let q = "mimeType='application/vnd.google-apps.script' and trashed=false";
-  if (query) q += ` and name contains '${query}'`;
+  const mime = "mimeType='application/vnd.google-apps.script' and trashed=false";
+  const nameFilter = query ? ` and name contains '${query}'` : "";
   const d = drive();
-  const all: any[] = [];
-  let pageToken: string | undefined;
-  do {
-    const res: any = await d.files.list({
-      q,
-      pageSize: 100,
-      fields: "nextPageToken,files(id,name,modifiedTime,webViewLink,owners)",
-      pageToken,
-    });
-    all.push(...(res.data.files ?? []));
-    pageToken = res.data.nextPageToken ?? undefined;
-  } while (pageToken);
+  const fields = "nextPageToken,files(id,name,modifiedTime,webViewLink,owners)";
+
+  async function fetchAll(q: string): Promise<any[]> {
+    const results: any[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res: any = await d.files.list({ q, pageSize: 100, fields, pageToken });
+      results.push(...(res.data.files ?? []));
+      pageToken = res.data.nextPageToken ?? undefined;
+    } while (pageToken);
+    return results;
+  }
+
+  const [owned, shared] = await Promise.all([
+    fetchAll(`${mime}${nameFilter}`),
+    fetchAll(`sharedWithMe=true and ${mime}${nameFilter}`),
+  ]);
+
+  const seen = new Set<string>();
+  const all = [...owned, ...shared].filter(f => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
+    return true;
+  });
+
   return { content: [{ type: "text", text: JSON.stringify(all) }] };
 });
 
