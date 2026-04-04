@@ -5,11 +5,35 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 import { resolveValue } from "./secrets.js";
 import { startMemoryWatch } from "./memory-watch.js";
 
 const UPSTREAM = "https://mcpx.online";
 const PORT = parseInt(process.env.MCPX_PROXY_PORT ?? "4099");
+
+// ─── PID file — mata instância anterior para liberar a porta ─────────────────
+
+const MCPX_DIR = join(homedir(), ".mcpx");
+const PID_FILE = join(MCPX_DIR, ".proxy.pid");
+
+if (!existsSync(MCPX_DIR)) mkdirSync(MCPX_DIR, { recursive: true, mode: 0o700 });
+
+if (existsSync(PID_FILE)) {
+  try {
+    const oldPid = parseInt(readFileSync(PID_FILE, "utf-8").trim());
+    if (!isNaN(oldPid) && oldPid !== process.pid) {
+      process.kill(oldPid, "SIGTERM");
+      // aguarda porta liberar
+      await new Promise(r => setTimeout(r, 400));
+    }
+  } catch { /* processo já morto, tudo bem */ }
+}
+
+writeFileSync(PID_FILE, String(process.pid));
+process.on("exit", () => { try { unlinkSync(PID_FILE); } catch {} });
 
 // ─── Health-check ─────────────────────────────────────────────────────────────
 

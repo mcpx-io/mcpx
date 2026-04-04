@@ -19,7 +19,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.2.1");
+  .version("1.2.2");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -136,10 +136,62 @@ program.command("list")
 // ── update ───────────────────────────────────────────────────────────────────
 
 program.command("update")
-  .description("MCPs locais são sempre atualizados automaticamente via npx")
-  .action(() => {
-    console.log("MCPs locais usam npx -y @latest — sempre baixam a versão mais recente ao iniciar.");
-    console.log("Nenhuma ação necessária.");
+  .description("Verifica novas versões dos pacotes mcpx e limpa cache npx")
+  .action(async () => {
+    const REGISTRY = "https://npm.pkg.github.com";
+    const PACKAGES = [
+      "@mcpx-io/proxy",
+      "@mcpx-io/mcpx",
+      "@mcpx-io/vps",
+      "@mcpx-io/debug",
+    ];
+
+    console.log("\nmcpx update — verificando versões...\n");
+
+    const NPX_CACHE = process.env.npm_config_cache
+      ? `${process.env.npm_config_cache}/_npx`
+      : process.platform === "win32"
+        ? `${process.env.LOCALAPPDATA}\\npm-cache\\_npx`
+        : `${process.env.HOME}/.npm/_npx`;
+
+    let hasUpdate = false;
+
+    for (const pkg of PACKAGES) {
+      try {
+        const res = await fetch(`${REGISTRY}/${pkg.replace("/", "%2F")}`, {
+          headers: {
+            Authorization: `Bearer ${process.env.NPM_TOKEN ?? ""}`,
+            Accept: "application/json",
+          },
+        });
+        if (!res.ok) { console.log(`  ? ${pkg} — não foi possível verificar`); continue; }
+        const data = await res.json() as { "dist-tags": { latest: string } };
+        const latest = data["dist-tags"]?.latest;
+        console.log(`  ✓ ${pkg}@${latest}`);
+        hasUpdate = true;
+      } catch {
+        console.log(`  ? ${pkg} — offline ou sem acesso ao registry`);
+      }
+    }
+
+    if (hasUpdate) {
+      // Limpa cache npx de pacotes mcpx-io
+      const { existsSync: ex, readdirSync: rd, rmSync } = await import("fs");
+      if (ex(NPX_CACHE)) {
+        let cleared = 0;
+        for (const hash of rd(NPX_CACHE)) {
+          const dir = `${NPX_CACHE}/${hash}/node_modules`;
+          if (!ex(dir)) continue;
+          const hasMcpx = rd(dir).some(d => d.startsWith("@mcpx-io") || d === "chrome-devtools-mcp");
+          if (hasMcpx) {
+            rmSync(`${NPX_CACHE}/${hash}`, { recursive: true, force: true });
+            cleared++;
+          }
+        }
+        if (cleared > 0) console.log(`\n  Cache npx limpo (${cleared} entrada(s) removida(s))`);
+      }
+      console.log("\nReinicie o Claude Code para aplicar as atualizações.");
+    }
   });
 
 // ── secrets ──────────────────────────────────────────────────────────────────
