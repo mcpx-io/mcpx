@@ -102,7 +102,7 @@ function hashValue(value: string): string {
 
 // ─── MCP Server factory ───────────────────────────────────────────────────────
 
-function createServer(deviceId: string): McpServer {
+function createServer(deviceId: string, sessionId?: string): McpServer {
   const server = new McpServer({ name: "mcpx-memory", version: "1.0.0" });
 
   // ── save_memory ──────────────────────────────────────────────────────────
@@ -124,9 +124,11 @@ function createServer(deviceId: string): McpServer {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (device_id, chave) WHERE chave IS NOT NULL
        DO UPDATE SET valor = EXCLUDED.valor, tipo = EXCLUDED.tipo, tags = EXCLUDED.tags,
-                     hash = EXCLUDED.hash, atualizado_em = now()
+                     hash = EXCLUDED.hash, session_id = EXCLUDED.session_id,
+                     project = COALESCE(EXCLUDED.project, memories.project),
+                     atualizado_em = now()
        WHERE memories.hash != EXCLUDED.hash`,
-      [deviceId, session_id ?? null, project ?? null, type ?? "manual", key, value, tags ?? [], hash]
+      [deviceId, session_id ?? sessionId ?? null, project ?? null, type ?? "manual", key, value, tags ?? [], hash]
     );
     return { content: [{ type: "text", text: `Memória '${key}' salva.` }] };
   });
@@ -380,7 +382,9 @@ app.all("/mcp", async (req: Request, res: Response) => {
     device = { id };
   }
 
-  const server    = createServer(device.id);
+  const connSession = (req.headers["x-session-id"] as string | undefined)
+    ?? `mcp-${Date.now()}`;
+  const server    = createServer(device.id, connSession);
   const transport = new StreamableHTTPServerTransport({});
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);
