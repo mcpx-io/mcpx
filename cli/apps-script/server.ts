@@ -166,7 +166,7 @@ mcp.registerTool("create_deployment", {
   description: "Cria um novo deployment (web app ou API executable)",
   inputSchema: {
     script_id: z.string(),
-    version_number: z.number(),
+    version_number: z.coerce.number(),
     description: z.string().optional(),
     access: z.enum(["MYSELF", "DOMAIN", "ANYONE", "ANYONE_ANONYMOUS"]).optional(),
   },
@@ -184,7 +184,7 @@ mcp.registerTool("create_deployment", {
 
 mcp.registerTool("update_deployment", {
   description: "Atualiza um deployment existente para uma nova versão",
-  inputSchema: { script_id: z.string(), deployment_id: z.string(), version_number: z.number(), description: z.string().optional() },
+  inputSchema: { script_id: z.string(), deployment_id: z.string(), version_number: z.coerce.number(), description: z.string().optional() },
 }, async ({ script_id: _sid, deployment_id, version_number, description }) => { const script_id = parseScriptId(_sid);
   const res = await script().projects.deployments.update({
     scriptId: script_id,
@@ -200,6 +200,33 @@ mcp.registerTool("delete_deployment", {
 }, async ({ script_id: _sid, deployment_id }) => { const script_id = parseScriptId(_sid);
   await script().projects.deployments.delete({ scriptId: script_id, deploymentId: deployment_id });
   return { content: [{ type: "text", text: `Deployment '${deployment_id}' removido.` }] };
+});
+
+// ── Execução de Funções ───────────────────────────────────────────────────────
+
+mcp.registerTool("run_function", {
+  description: "Executa uma função de um projeto Apps Script remotamente. O script deve ter um deployment do tipo API_EXECUTABLE. Retorna o resultado da função.",
+  inputSchema: {
+    script_id: z.string(),
+    function_name: z.string(),
+    parameters: z.array(z.any()).optional(),
+    dev_mode: z.string().optional(),
+  },
+}, async ({ script_id: _sid, function_name, parameters, dev_mode }) => { const script_id = parseScriptId(_sid);
+  const res = await script().scripts.run({
+    scriptId: script_id,
+    requestBody: {
+      function: function_name,
+      parameters: parameters ?? [],
+      devMode: dev_mode === "true",
+    },
+  });
+  const response = res.data.response;
+  const error = res.data.error;
+  if (error) {
+    return { content: [{ type: "text", text: JSON.stringify({ error: error.message, details: error.details }) }] };
+  }
+  return { content: [{ type: "text", text: JSON.stringify({ result: response?.result ?? null, done: res.data.done }) }] };
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

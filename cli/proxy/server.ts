@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { resolveValue } from "./secrets.js";
+import { startMemoryWatch } from "./memory-watch.js";
 
 const UPSTREAM = "https://mcpx.online";
 const PORT = parseInt(process.env.MCPX_PROXY_PORT ?? "4099");
@@ -101,3 +102,6 @@ mcp.registerTool("proxy_status", {
 
 const transport = new StdioServerTransport();
 await mcp.connect(transport);
+
+// Inicia o watcher de sessões Claude Code (auto-compact + ingest)
+startMemoryWatch();

@@ -145,6 +145,22 @@ export const MCPS: McpDefinition[] = [
     ],
   },
   {
+    key: "meta",
+    name: "mcpx-meta",
+    description: "Meta API — anúncios, campanhas, insights, páginas, Instagram e Messenger",
+    type: "local",
+    package: "@mcpx-io/meta@latest",
+    envInputs: [
+      {
+        key: "meta_access_token",
+        label: "Meta Access Token (User ou System User Token)",
+        placeholder: "EAAxxxxxxxxxx...",
+        secret: true,
+        env: "META_ACCESS_TOKEN",
+      },
+    ],
+  },
+  {
     key: "debug",
     name: "mcpx-debug",
     description: "Debug local — browser automation, HTTP requests, parse de rotas",
@@ -158,5 +174,22 @@ export const MCPS: McpDefinition[] = [
     type: "local",
     package: "chrome-devtools-mcp@latest",
     packageArgs: ["--port=9222"],
+  },
+  {
+    key: "memory",
+    name: "mcpx-memory",
+    description: "Memória global — salva contexto, decisões e histórico entre sessões e projetos (auto-compact)",
+    type: "remote",
+    url: "http://localhost:4099/memory/mcp",
+    headers: { Accept: "application/json, text/event-stream" },
+    secretInputs: [
+      {
+        key: "memory_token",
+        label: "mcpx Memory Token (gerado automaticamente — pressione Enter)",
+        ref: "memory",
+        header: "X-Memory-Token",
+      },
+    ],
+    postInstallNote: "O watcher de auto-compact já está ativo via proxy. Nenhuma configuração adicional necessária.",
   },
 ];

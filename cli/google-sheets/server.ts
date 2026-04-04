@@ -332,7 +332,7 @@ mcp.registerTool("format_cells", {
 
 mcp.registerTool("set_column_width", {
   description: "Define a largura de colunas (índices 0-based)",
-  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_column: z.number(), end_column: z.number(), width: z.number() },
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_column: z.coerce.number(), end_column: z.coerce.number(), width: z.coerce.number() },
 }, async ({ spreadsheet_id: _sid, sheet_name, start_column, end_column, width }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateDimensionProperties: { range: { sheetId, dimension: "COLUMNS", startIndex: start_column, endIndex: end_column }, properties: { pixelSize: width }, fields: "pixelSize" } }] } });
@@ -341,7 +341,7 @@ mcp.registerTool("set_column_width", {
 
 mcp.registerTool("set_row_height", {
   description: "Define a altura de linhas (índices 0-based)",
-  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_row: z.number(), end_row: z.number(), height: z.number() },
+  inputSchema: { spreadsheet_id: z.string(), sheet_name: z.string(), start_row: z.coerce.number(), end_row: z.coerce.number(), height: z.coerce.number() },
 }, async ({ spreadsheet_id: _sid, sheet_name, start_row, end_row, height }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
   const sheetId = await getSheetId(spreadsheet_id, sheet_name);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ updateDimensionProperties: { range: { sheetId, dimension: "ROWS", startIndex: start_row, endIndex: end_row }, properties: { pixelSize: height }, fields: "pixelSize" } }] } });
@@ -366,6 +366,115 @@ mcp.registerTool("unmerge_cells", {
   const { r1, r2, c1, c2 } = a1ToGrid(range);
   await sheets().spreadsheets.batchUpdate({ spreadsheetId: spreadsheet_id, requestBody: { requests: [{ unmergeCells: { range: { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 } } }] } });
   return { content: [{ type: "text", text: `Mesclagem desfeita em '${range}'.` }] };
+});
+
+mcp.registerTool("copy_sheet", {
+  description: "Duplica uma aba dentro da mesma planilha ou para outra planilha",
+  inputSchema: {
+    spreadsheet_id: z.string(),
+    sheet_name: z.string(),
+    destination_spreadsheet_id: z.string().optional(),
+  },
+}, async ({ spreadsheet_id: _sid, sheet_name, destination_spreadsheet_id: _dest }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
+  const destination_spreadsheet_id = _dest ? parseSpreadsheetId(_dest) : spreadsheet_id;
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const res = await sheets().spreadsheets.sheets.copyTo({
+    spreadsheetId: spreadsheet_id,
+    sheetId,
+    requestBody: { destinationSpreadsheetId: destination_spreadsheet_id },
+  });
+  return { content: [{ type: "text", text: JSON.stringify({ new_sheet_id: res.data.sheetId, new_title: res.data.title }) }] };
+});
+
+mcp.registerTool("sort_range", {
+  description: "Ordena um range por uma ou mais colunas. sort_specs: array de {column_index (0-based), ascending}",
+  inputSchema: {
+    spreadsheet_id: z.string(),
+    sheet_name: z.string(),
+    range: z.string(),
+    sort_specs: z.array(z.object({ column_index: z.coerce.number(), ascending: z.boolean().optional() })),
+  },
+}, async ({ spreadsheet_id: _sid, sheet_name, range, sort_specs }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const { r1, r2, c1, c2 } = a1ToGrid(range);
+  await sheets().spreadsheets.batchUpdate({
+    spreadsheetId: spreadsheet_id,
+    requestBody: {
+      requests: [{
+        sortRange: {
+          range: { sheetId, startRowIndex: r1, endRowIndex: r2, startColumnIndex: c1, endColumnIndex: c2 },
+          sortSpecs: sort_specs.map(s => ({
+            dimensionIndex: s.column_index,
+            sortOrder: s.ascending === false ? "DESCENDING" : "ASCENDING",
+          })),
+        },
+      }],
+    },
+  });
+  return { content: [{ type: "text", text: `Range '${range}' ordenado.` }] };
+});
+
+mcp.registerTool("find_replace", {
+  description: "Busca e substitui valores em uma planilha. Pode ser limitado a uma aba ou aplicado em toda a planilha.",
+  inputSchema: {
+    spreadsheet_id: z.string(),
+    find: z.string(),
+    replace: z.string(),
+    sheet_name: z.string().optional(),
+    match_case: z.boolean().optional(),
+    match_entire_cell: z.boolean().optional(),
+    search_by_regex: z.boolean().optional(),
+  },
+}, async ({ spreadsheet_id: _sid, find, replace, sheet_name, match_case, match_entire_cell, search_by_regex }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
+  const range: Record<string, unknown> = {};
+  if (sheet_name) range.sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const res = await sheets().spreadsheets.batchUpdate({
+    spreadsheetId: spreadsheet_id,
+    requestBody: {
+      requests: [{
+        findReplace: {
+          find,
+          replacement: replace,
+          matchCase: match_case ?? false,
+          matchEntireCell: match_entire_cell ?? false,
+          searchByRegex: search_by_regex ?? false,
+          allSheets: !sheet_name,
+          ...(sheet_name ? { range } : {}),
+        },
+      }],
+    },
+  });
+  const fr = res.data.replies?.[0]?.findReplace;
+  return { content: [{ type: "text", text: JSON.stringify({ occurrences_changed: fr?.occurrencesChanged ?? 0 }) }] };
+});
+
+mcp.registerTool("freeze", {
+  description: "Congela linhas e/ou colunas em uma aba. Use frozen_rows=0 e frozen_columns=0 para descongelar.",
+  inputSchema: {
+    spreadsheet_id: z.string(),
+    sheet_name: z.string(),
+    frozen_rows: z.coerce.number().optional(),
+    frozen_columns: z.coerce.number().optional(),
+  },
+}, async ({ spreadsheet_id: _sid, sheet_name, frozen_rows, frozen_columns }) => { const spreadsheet_id = parseSpreadsheetId(_sid);
+  const sheetId = await getSheetId(spreadsheet_id, sheet_name);
+  const gridProperties: Record<string, number> = {};
+  const fields: string[] = [];
+  if (frozen_rows !== undefined) { gridProperties.frozenRowCount = frozen_rows; fields.push("gridProperties.frozenRowCount"); }
+  if (frozen_columns !== undefined) { gridProperties.frozenColumnCount = frozen_columns; fields.push("gridProperties.frozenColumnCount"); }
+  if (!fields.length) throw new Error("Informe frozen_rows e/ou frozen_columns.");
+  await sheets().spreadsheets.batchUpdate({
+    spreadsheetId: spreadsheet_id,
+    requestBody: {
+      requests: [{
+        updateSheetProperties: {
+          properties: { sheetId, gridProperties },
+          fields: fields.join(","),
+        },
+      }],
+    },
+  });
+  return { content: [{ type: "text", text: `Congelamento aplicado na aba '${sheet_name}'.` }] };
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

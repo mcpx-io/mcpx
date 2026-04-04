@@ -10,6 +10,8 @@ import {
 import {
   saveSecret, loadSecret, deleteSecret, listSecrets, makeRef,
 } from "./secrets.js";
+import { createHash } from "crypto";
+import { hostname, platform, userInfo } from "os";
 import { oauthSecretsExist, runOAuthFlow } from "./oauth.js";
 
 const program = new Command();
@@ -212,6 +214,16 @@ async function installMcp(key: string): Promise<void> {
 
     // Campos com secret — salva criptografado, coloca referência no header
     for (const field of mcp.secretInputs ?? []) {
+      // memory: token gerado automaticamente do fingerprint da máquina
+      if (key === "memory" && field.ref === "memory") {
+        const id = `${hostname()}::${platform()}::${userInfo().username}`;
+        const token = createHash("sha256").update(id).digest("hex");
+        saveSecret(field.ref, token);
+        headers[field.header] = makeRef(field.ref);
+        console.log(`  Token de memória gerado automaticamente.`);
+        continue;
+      }
+
       const value = await input({
         message: `${field.label} (Enter para pular):`,
       });
