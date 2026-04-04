@@ -11,6 +11,32 @@ import { startMemoryWatch } from "./memory-watch.js";
 const UPSTREAM = "https://mcpx.online";
 const PORT = parseInt(process.env.MCPX_PROXY_PORT ?? "4099");
 
+// ─── Health-check ─────────────────────────────────────────────────────────────
+
+const REMOTE_SERVICES: Record<string, string> = {
+  postgres: `${UPSTREAM}/postgres/health`,
+  redis:    `${UPSTREAM}/redis/health`,
+  memory:   `${UPSTREAM}/memory/health`,
+};
+
+const healthStatus: Record<string, { ok: boolean; latency?: number; error?: string; checkedAt: string }> = {};
+
+async function checkHealth() {
+  for (const [name, url] of Object.entries(REMOTE_SERVICES)) {
+    const t0 = Date.now();
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      healthStatus[name] = { ok: r.ok, latency: Date.now() - t0, checkedAt: new Date().toISOString() };
+    } catch (e) {
+      healthStatus[name] = { ok: false, error: (e as Error).message, checkedAt: new Date().toISOString() };
+    }
+  }
+}
+
+// Checa na inicialização e a cada 2 minutos
+checkHealth();
+setInterval(checkHealth, 2 * 60 * 1000).unref();
+
 // ─── Headers que NÃO repassar ao upstream ────────────────────────────────────
 
 const HOP_BY_HOP = new Set([
@@ -23,6 +49,13 @@ const HOP_BY_HOP = new Set([
 
 const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   try {
+    // ── Endpoint local de status ──────────────────────────────────────────
+    if (req.url === "/status" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ proxy: "ok", port: PORT, services: healthStatus }, null, 2));
+      return;
+    }
+
     const url = `${UPSTREAM}${req.url}`;
 
     // Resolve secrets nos headers
@@ -90,14 +123,28 @@ httpServer.on("error", (e: NodeJS.ErrnoException) => {
 const mcp = new McpServer({ name: "@mcpx-io/proxy", version: "1.0.2" });
 
 mcp.registerTool("proxy_status", {
-  description: "Retorna o status do proxy local mcpx",
+  description: "Retorna o status do proxy local mcpx e saúde dos serviços remotos",
 }, async () => {
-  return {
-    content: [{
-      type: "text",
-      text: `mcpx-proxy ativo em http://127.0.0.1:${PORT}\nEncaminha para: ${UPSTREAM}`,
-    }],
-  };
+  const lines = [`mcpx-proxy ativo em http://127.0.0.1:${PORT}`, `Upstream: ${UPSTREAM}`, ""];
+  for (const [name, s] of Object.entries(healthStatus)) {
+    const icon = s.ok ? "✓" : "✗";
+    const info = s.ok ? `${s.latency}ms` : s.error ?? "erro";
+    lines.push(`${icon} ${name}: ${info} (${s.checkedAt})`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+});
+
+mcp.registerTool("health_check", {
+  description: "Força uma verificação imediata da saúde de todos os serviços mcpx e retorna o resultado",
+}, async () => {
+  await checkHealth();
+  const lines: string[] = [];
+  for (const [name, s] of Object.entries(healthStatus)) {
+    const icon = s.ok ? "✓" : "✗";
+    const info = s.ok ? `${s.latency}ms` : s.error ?? "erro";
+    lines.push(`${icon} ${name}: ${info}`);
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 });
 
 const transport = new StdioServerTransport();

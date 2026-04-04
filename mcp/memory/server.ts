@@ -230,6 +230,40 @@ function createServer(deviceId: string, sessionId?: string): McpServer {
     return { content: [{ type: "text", text: `${total.rows[0].count} memória(s) total:\n\n${lines.join("\n\n")}` }] };
   });
 
+  // ── save_profile ─────────────────────────────────────────────────────────
+
+  server.registerTool("save_profile", {
+    description: "Salva o perfil do usuário — stack, preferências, linguagens, timezone, etc. Sobrescreve sempre.",
+    inputSchema: {
+      value: z.string().describe("Conteúdo do perfil em texto livre ou JSON"),
+    },
+  }, async ({ value }) => {
+    const hash = hashValue(value);
+    await pool.query(
+      `INSERT INTO memories (device_id, tipo, chave, valor, hash)
+       VALUES ($1, 'context', '__profile__', $2, $3)
+       ON CONFLICT (device_id, chave) WHERE chave IS NOT NULL
+       DO UPDATE SET valor = EXCLUDED.valor, hash = EXCLUDED.hash, atualizado_em = now()`,
+      [deviceId, value, hash]
+    );
+    return { content: [{ type: "text", text: "Perfil salvo." }] };
+  });
+
+  // ── get_profile ──────────────────────────────────────────────────────────
+
+  server.registerTool("get_profile", {
+    description: "Retorna o perfil do usuário salvo anteriormente.",
+    inputSchema: {},
+  }, async () => {
+    const r = await pool.query(
+      `SELECT valor, atualizado_em FROM memories WHERE device_id = $1 AND chave = '__profile__'`,
+      [deviceId]
+    );
+    if (r.rows.length === 0)
+      return { content: [{ type: "text", text: "Nenhum perfil salvo ainda. Use save_profile para criar." }] };
+    return { content: [{ type: "text", text: r.rows[0].valor }] };
+  });
+
   // ── delete_memory ────────────────────────────────────────────────────────
 
   server.registerTool("delete_memory", {
