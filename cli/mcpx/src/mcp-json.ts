@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { resolve, join } from "path";
+import { homedir } from "os";
 
 const MCP_PATH = resolve(process.cwd(), ".mcp.json");
 
@@ -68,4 +69,65 @@ export function ensureProxy(): void {
     };
     writeMcpJson(data);
   }
+}
+
+// ─── Global settings.json ─────────────────────────────────────────────────────
+
+const SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+
+interface ClaudeSettings {
+  mcpServers?: Record<string, McpServer>;
+  [key: string]: unknown;
+}
+
+function readSettings(): ClaudeSettings {
+  if (!existsSync(SETTINGS_PATH)) return {};
+  try { return JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")); } catch { return {}; }
+}
+
+function writeSettings(data: ClaudeSettings): void {
+  const dir = join(homedir(), ".claude");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
+
+export function addGlobalMcp(key: string, server: McpServer): void {
+  const settings = readSettings();
+  if (!settings.mcpServers) settings.mcpServers = {};
+  settings.mcpServers[key] = server;
+  writeSettings(settings);
+}
+
+export function isGlobalMcpConfigured(key: string): boolean {
+  return !!(readSettings().mcpServers?.[key]);
+}
+
+export function ensureGlobalProxyAndMemory(): void {
+  const settings = readSettings();
+  if (!settings.mcpServers) settings.mcpServers = {};
+  let changed = false;
+
+  // proxy
+  if (!settings.mcpServers["mcpx-proxy"]) {
+    settings.mcpServers["mcpx-proxy"] = {
+      command: "npx",
+      args: ["-y", "@mcpx-io/proxy@latest"],
+    };
+    changed = true;
+  }
+
+  // memory
+  if (!settings.mcpServers["mcpx-memory"]) {
+    settings.mcpServers["mcpx-memory"] = {
+      type: "http",
+      url: "http://localhost:4099/memory/mcp",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        "X-Memory-Token": `mcpx:enc:memory`,
+      },
+    };
+    changed = true;
+  }
+
+  if (changed) writeSettings(settings);
 }

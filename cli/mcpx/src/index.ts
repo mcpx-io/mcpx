@@ -6,6 +6,7 @@ import { MCPS } from "./mcps.js";
 import {
   addLocalMcp, addRemoteMcp, removeMcp,
   listConfigured, mcpJsonPath, readMcpJson, ensureProxy,
+  ensureGlobalProxyAndMemory,
 } from "./mcp-json.js";
 import {
   saveSecret, loadSecret, deleteSecret, listSecrets, makeRef,
@@ -34,7 +35,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.2.4");
+  .version("1.2.5");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -45,14 +46,21 @@ program.command("init")
     console.log(`Projeto: ${process.cwd()}`);
     console.log(`Arquivo: ${mcpJsonPath()}\n`);
 
-    // Proxy sempre presente — adicionado automaticamente
-    ensureProxy();
+    // Proxy + memory globais — automático, sem perguntar
+    const memId = `${hostname()}::${platform()}::${userInfo().username}`;
+    const memToken = createHash("sha256").update(memId).digest("hex");
+    saveSecret("memory", memToken);
+    ensureGlobalProxyAndMemory();
+    console.log("✓ proxy + memory configurados globalmente (~/.claude/settings.json)");
 
     const configured = new Set(listConfigured());
 
+    // MCPs por projeto — exclui memory e proxy (já globais)
+    const PROJECT_MCPS = MCPS.filter(m => m.key !== "memory");
+
     const selected = await checkbox({
-      message: "Selecione os MCPs (espaço para marcar, enter para confirmar):",
-      choices: MCPS.map(m => ({
+      message: "Selecione os MCPs do projeto (espaço para marcar, enter para confirmar):",
+      choices: PROJECT_MCPS.map(m => ({
         name: `${m.key.padEnd(16)} ${m.type === "remote" ? "[remoto]" : "[local] "} — ${m.description}${configured.has(m.name) ? "  (já configurado)" : ""}`,
         short: m.key,
         value: m.key,
@@ -68,8 +76,7 @@ program.command("init")
     });
 
     if (selected.length === 0) {
-      console.log("\nNenhum MCP selecionado.");
-      return;
+      console.log("\nNenhum MCP de projeto selecionado.");
     }
 
     console.log("");
@@ -146,7 +153,7 @@ program.command("add [name]")
     if (!key) {
       key = await select({
         message: "Qual MCP deseja adicionar?",
-        choices: MCPS.map(m => ({
+        choices: MCPS.filter(m => m.key !== "memory").map(m => ({
           name: `${m.key} — ${m.description}`,
           value: m.key,
         })),
