@@ -5,7 +5,7 @@ import input from "@inquirer/input";
 import { MCPS } from "./mcps.js";
 import {
   addLocalMcp, addRemoteMcp, removeMcp,
-  listConfigured, mcpJsonPath, readMcpJson, ensureProxy,
+  listConfigured, mcpJsonPath, readMcpJson,
   ensureGlobalProxyAndMemory,
 } from "./mcp-json.js";
 import {
@@ -35,7 +35,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.2.5");
+  .version("1.2.6");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -361,9 +361,6 @@ async function installMcp(key: string): Promise<void> {
       saveSecret(field.ref, value.trim());
       headers[field.header] = makeRef(field.ref);
     }
-
-    // Se tem secretInputs, garante que o proxy está no .mcp.json
-    if ((mcp.secretInputs ?? []).length > 0) ensureProxy();
 
     addRemoteMcp(mcp.name, mcp.url!, headers);
     console.log(`✓ "${mcp.name}" adicionado ao .mcp.json`);
