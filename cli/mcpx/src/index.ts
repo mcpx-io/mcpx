@@ -12,8 +12,9 @@ import {
 } from "./secrets.js";
 import { createHash } from "crypto";
 import { hostname, platform, userInfo, homedir } from "os";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { writeProjectMemory, projectNameFromCwd } from "./project-memory.js";
 
 function getGithubToken(): string {
   // 1. variável de ambiente
@@ -33,7 +34,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.2.3");
+  .version("1.2.4");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -80,7 +81,59 @@ program.command("init")
     }
 
     console.log(`\n✓ ${added} MCP(s) configurado(s) em .mcp.json`);
-    console.log("Recarregue o Claude Code para aplicar.");
+
+    const cwd      = process.cwd();
+    const name     = projectNameFromCwd(cwd);
+    const mcpList  = Object.keys(readMcpJson().mcpServers);
+
+    // Gera arquivo de memória do projeto em ~/.claude/projects/{encoded}/memory/
+    const memFile = writeProjectMemory({ cwd, mcps: mcpList });
+    console.log(`✓ Memória do projeto criada em:\n  ${memFile}`);
+
+    // Gera CLAUDE.md se não existir
+    const claudeMdPath = join(cwd, "CLAUDE.md");
+    if (!existsSync(claudeMdPath)) {
+      const mcpSection = mcpList
+        .filter(m => m !== "mcpx-proxy")
+        .map(m => `- **${m}**`)
+        .join("\n");
+
+      writeFileSync(claudeMdPath, `# ${name}
+
+## Idioma
+Sempre responda em português.
+
+## Início de cada sessão
+Ao iniciar qualquer conversa, executar obrigatoriamente:
+1. \`get_profile\` (mcpx-memory) — carrega perfil do usuário
+   - Se vazio: inferir stack/preferências do contexto e criar com \`save_profile\`
+2. \`search_memories\` com \`project="${name}"\` — carrega contexto recente do projeto
+
+## MCPs disponíveis
+${mcpSection}
+
+## O que salvar na memória
+Usar \`save_memory\` ao final de tarefas importantes, sempre com \`project: "${name}"\`:
+- Decisões de arquitetura → type: "decision"
+- Bugs não-óbvios e como resolver → type: "gotcha"
+- Padrões do projeto → type: "recipe"
+- Contexto da sessão → type: "context", key: "last-session"
+
+## Auto-melhoria
+Este arquivo deve evoluir com o uso. Atualizar quando o usuário corrigir um comportamento, um padrão ficar claro, ou o projeto evoluir.
+
+## Final de cada sessão
+Quando o usuário disser "pode fechar", "terminamos" ou similar:
+1. \`save_memory\` com key: "last-session", type: "context", project: "${name}"
+2. Para cada decisão importante: \`save_memory\` com type: "decision"
+3. Para cada gotcha encontrado: \`save_memory\` com type: "gotcha"
+`, "utf-8");
+      console.log(`✓ CLAUDE.md criado em ${claudeMdPath}`);
+    } else {
+      console.log(`  CLAUDE.md já existe — não sobrescrito`);
+    }
+
+    console.log("\nRecarregue o Claude Code para aplicar.");
   });
 
 // ── add ──────────────────────────────────────────────────────────────────────

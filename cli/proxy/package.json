@@ -1,6 +1,6 @@
 {
   "name": "@mcpx-io/proxy",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "description": "Proxy local HTTP que resolve secrets mcpx:enc:* antes de encaminhar para mcpx.online",
   "bin": {

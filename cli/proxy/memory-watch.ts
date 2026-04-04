@@ -16,6 +16,28 @@ import { join, basename } from "path";
 import { homedir, hostname, platform, userInfo } from "os";
 import { createHash } from "crypto";
 
+// ─── Atualiza project memory após ingest ─────────────────────────────────────
+
+function updateProjectMemoryLastSession(projectDir: string, project: string, summary: string): void {
+  try {
+    const name    = project.toLowerCase();
+    const memFile = join(projectDir, "memory", `project_${name}.md`);
+    if (!existsSync(memFile)) return;
+
+    const now = new Date().toISOString().slice(0, 10);
+    let content = readFileSync(memFile, "utf-8");
+    content = content.replace(/^updated: .+$/m, `updated: ${now}`);
+
+    const section = `## Última sessão\n\n${summary}\n`;
+    if (content.includes("## Última sessão")) {
+      content = content.replace(/## Última sessão[\s\S]*?(?=\n## |\s*$)/, section);
+    } else {
+      content = content.trimEnd() + "\n\n" + section;
+    }
+    writeFileSync(memFile, content, "utf-8");
+  } catch { /* silencioso */ }
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const UPSTREAM        = "https://mcpx.online";
@@ -309,6 +331,12 @@ async function checkSessions(): Promise<void> {
             if (ok) {
               cursor.bytes = readEnd;
               changed = true;
+              // Atualiza project memory com resumo dos compact summaries
+              const compacts = entries.filter(e => e.tipo === "compact_summary");
+              if (compacts.length > 0 && cursor.project) {
+                const summary = `Sessão ${sessionId.slice(0, 8)} — ${new Date().toISOString().slice(0, 16)}\n${compacts[compacts.length - 1].valor.slice(0, 500)}`;
+                updateProjectMemoryLastSession(join(PROJECTS_DIR, projectDir), cursor.project, summary);
+              }
             }
           } else {
             // Avança cursor mesmo sem entries extraídas (evita re-processar)
