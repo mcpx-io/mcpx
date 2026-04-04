@@ -11,7 +11,21 @@ import {
   saveSecret, loadSecret, deleteSecret, listSecrets, makeRef,
 } from "./secrets.js";
 import { createHash } from "crypto";
-import { hostname, platform, userInfo } from "os";
+import { hostname, platform, userInfo, homedir } from "os";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+
+function getGithubToken(): string {
+  // 1. variável de ambiente
+  if (process.env.NPM_TOKEN) return process.env.NPM_TOKEN;
+  // 2. ~/.npmrc
+  const npmrc = join(homedir(), ".npmrc");
+  if (existsSync(npmrc)) {
+    const match = readFileSync(npmrc, "utf-8").match(/npm\.pkg\.github\.com\/:_authToken=(.+)/);
+    if (match) return match[1].trim();
+  }
+  return "";
+}
 import { oauthSecretsExist, runOAuthFlow } from "./oauth.js";
 
 const program = new Command();
@@ -19,7 +33,7 @@ const program = new Command();
 program
   .name("mcpx")
   .description("CLI para instalar e configurar MCPs do ecossistema mcpx")
-  .version("1.2.2");
+  .version("1.2.3");
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
@@ -158,9 +172,10 @@ program.command("update")
 
     for (const pkg of PACKAGES) {
       try {
+        const token = getGithubToken();
         const res = await fetch(`${REGISTRY}/${pkg.replace("/", "%2F")}`, {
           headers: {
-            Authorization: `Bearer ${process.env.NPM_TOKEN ?? ""}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
             Accept: "application/json",
           },
         });

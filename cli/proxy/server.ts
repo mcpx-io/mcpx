@@ -35,6 +35,61 @@ if (existsSync(PID_FILE)) {
 writeFileSync(PID_FILE, String(process.pid));
 process.on("exit", () => { try { unlinkSync(PID_FILE); } catch {} });
 
+// ─── Auto-update check ────────────────────────────────────────────────────────
+
+async function checkAndClearCache(): Promise<void> {
+  try {
+    // Lê token do ~/.npmrc
+    const npmrcPath = join(homedir(), ".npmrc");
+    let token = "";
+    if (existsSync(npmrcPath)) {
+      const match = readFileSync(npmrcPath, "utf-8").match(/npm\.pkg\.github\.com\/:_authToken=(.+)/);
+      if (match) token = match[1].trim();
+    }
+
+    const PACKAGES = ["@mcpx-io/proxy", "@mcpx-io/vps", "@mcpx-io/debug"];
+    const REGISTRY  = "https://npm.pkg.github.com";
+
+    const NPX_CACHE = process.platform === "win32"
+      ? `${process.env.LOCALAPPDATA}\\npm-cache\\_npx`
+      : `${homedir()}/.npm/_npx`;
+
+    let cleared = 0;
+    for (const pkg of PACKAGES) {
+      const res = await fetch(`${REGISTRY}/${pkg.replace("/", "%2F")}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Accept: "application/json" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) continue;
+      const data = await res.json() as { "dist-tags": { latest: string } };
+      const latest = data["dist-tags"]?.latest;
+      if (!latest) continue;
+
+      // Verifica versão instalada no cache npx
+      if (!existsSync(NPX_CACHE)) continue;
+      const { readdirSync, rmSync } = await import("fs");
+      for (const hash of readdirSync(NPX_CACHE)) {
+        const pkgJson = join(NPX_CACHE, hash, "node_modules", pkg, "package.json");
+        if (!existsSync(pkgJson)) continue;
+        try {
+          const cached = JSON.parse(readFileSync(pkgJson, "utf-8")).version as string;
+          if (cached !== latest) {
+            rmSync(join(NPX_CACHE, hash), { recursive: true, force: true });
+            cleared++;
+            process.stderr.write(`mcpx-proxy: ${pkg} ${cached} → ${latest} (cache limpo)\n`);
+          }
+        } catch { /* ignora */ }
+      }
+    }
+    if (cleared > 0) {
+      process.stderr.write(`mcpx-proxy: ${cleared} pacote(s) atualizados — reinicie o Claude Code para aplicar.\n`);
+    }
+  } catch { /* silencioso */ }
+}
+
+// Roda auto-update em background sem bloquear o proxy
+checkAndClearCache();
+
 // ─── Health-check ─────────────────────────────────────────────────────────────
 
 const REMOTE_SERVICES: Record<string, string> = {
