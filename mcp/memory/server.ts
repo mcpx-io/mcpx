@@ -122,7 +122,7 @@ function createServer(deviceId: string): McpServer {
     await pool.query(
       `INSERT INTO memories (device_id, session_id, project, tipo, chave, valor, tags, hash)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (device_id, chave)
+       ON CONFLICT (device_id, chave) WHERE chave IS NOT NULL
        DO UPDATE SET valor = EXCLUDED.valor, tipo = EXCLUDED.tipo, tags = EXCLUDED.tags,
                      hash = EXCLUDED.hash, atualizado_em = now()
        WHERE memories.hash != EXCLUDED.hash`,
