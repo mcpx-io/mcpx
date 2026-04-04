@@ -11,7 +11,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "fs";
-import { readdir, stat, readFile, writeFile } from "fs/promises";
+import { readdir, stat, readFile, writeFile, open } from "fs/promises";
 import { join, basename } from "path";
 import { homedir, hostname, platform, userInfo } from "os";
 import { createHash } from "crypto";
@@ -25,6 +25,7 @@ const CLAUDE_DIR      = join(homedir(), ".claude");
 const SESSIONS_DIR    = join(CLAUDE_DIR, "sessions");
 const PROJECTS_DIR    = join(CLAUDE_DIR, "projects");
 const SIZE_THRESHOLD  = 5 * 1024 * 1024;   // 5MB
+const MAX_READ_BYTES  = 2 * 1024 * 1024;   // lê no máx 2MB por vez (evita OOM)
 const POLL_INTERVAL   = 5 * 60 * 1000;     // 5min
 const KEEP_LINES      = 50;                 // linhas mantidas após truncar
 
@@ -291,21 +292,27 @@ async function checkSessions(): Promise<void> {
       // ── Sessão ativa e arquivo grande → processa novas linhas ────────────
       if (fileSize > SIZE_THRESHOLD && fileSize > cursor.bytes) {
         try {
-          const fullContent = await readFile(jsonlPath, "utf-8");
-          // Pega apenas o conteúdo novo desde o cursor (em bytes)
-          const newContent = fullContent.slice(cursor.bytes);
+          // Lê apenas os bytes novos desde o cursor (máx MAX_READ_BYTES por vez)
+          const readStart = cursor.bytes;
+          const readEnd   = Math.min(fileSize, readStart + MAX_READ_BYTES);
+          const readSize  = readEnd - readStart;
+          const fh        = await open(jsonlPath, "r");
+          const buf       = Buffer.alloc(readSize);
+          await fh.read(buf, 0, readSize, readStart);
+          await fh.close();
+          const newContent = buf.toString("utf-8");
           if (!newContent.trim()) continue;
 
           const entries = extractEntries(newContent);
           if (entries.length > 0) {
-            const ok = await ingest(token, sessionId, cursor.project, cursor.bytes, fileSize, entries);
+            const ok = await ingest(token, sessionId, cursor.project, readStart, readEnd, entries);
             if (ok) {
-              cursor.bytes = fileSize;
+              cursor.bytes = readEnd;
               changed = true;
             }
           } else {
             // Avança cursor mesmo sem entries extraídas (evita re-processar)
-            cursor.bytes = fileSize;
+            cursor.bytes = readEnd;
             changed = true;
           }
         } catch { continue; }
